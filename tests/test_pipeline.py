@@ -119,7 +119,8 @@ class FakeHttp:
             pre = "m" if kind == "movie" else "t"
             provs = {int(x) for x in q["with_watch_providers"].split("|")}
             free = "ads" in q.get("with_watch_monetization_types", "")
-            ids = [int(k[1:]) for k, f in U.items() if k.startswith(pre) and provs & set(f.get("ads", []) if free else f["prov"])]
+            ids = [int(k[1:]) for k, f in U.items() if k.startswith(pre) and not f.get("unlisted")
+                   and provs & set(f.get("ads", []) if free else f["prov"])]
             return {"results": [{"id": i} for i in ids], "total_pages": 1}
         if p.startswith("/search/"):
             kind = p.split("/")[2]
@@ -282,6 +283,27 @@ class PipelineTest(unittest.TestCase):
             U["t2"]["prov"] = [15]
         self.assertEqual(feed["titles"]["t2"]["new_date"], "2026-11-08")
         self.assertEqual(feed["rows"]["new"][0], "t2")
+
+    def test_title_off_every_list_is_remembered_for_a_year(self):
+        bf.run("full")
+        U["m2"]["unlisted"] = True  # Tiny Indie drops off every list but stays on Hulu
+        try:
+            def day(d):
+                os.environ.update(FEED_TODAY=d, FEED_NOW=f"{d}T12:00:00Z")
+                return bf.run("full")
+            feed = day("2026-11-08")
+            self.assertEqual(feed["titles"]["m2"]["services"], ["hulu"])  # still there, services rechecked
+            U["m2"]["prov"] = []  # really leaves its service: gone from the data
+            self.assertNotIn("m2", day("2026-11-09")["titles"])
+            U["m2"]["prov"] = [15]  # back on Hulu: back in the data
+            self.assertIn("m2", day("2026-12-01")["titles"])
+            self.assertIn("m2", day("2027-11-06")["titles"])  # a year after it was last on a list
+            self.assertNotIn("m2", day("2027-11-07")["titles"])  # after that it's dropped
+            del U["m2"]["unlisted"]
+            self.assertIn("m2", day("2027-11-08")["titles"])  # on a list again: tracked again
+        finally:
+            U["m2"].pop("unlisted", None)
+            U["m2"]["prov"] = [15]
 
     def test_recent_release_missing_scores_rechecked_sooner(self):
         U["m3"].update(rt=None, mc=None)  # Fresh Release (Oct 30): no reviews yet on day one

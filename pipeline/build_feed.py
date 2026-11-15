@@ -770,6 +770,19 @@ def run(mode: str = "auto") -> dict:
         pool.update(trending_keys)
         log(f"pool from discover + trending: {len(pool)}")
 
+        # 2b. Remember titles that dropped off every list (no longer new or trending, say)
+        #     for a year, and keep checking where they stream, so a title someone saved
+        #     isn't shown as "No longer available" while it's still on their service.
+        #     Each title notes the last day it was on a list ("_listed"); titles seen
+        #     before this rule started count from their first morning under it.
+        seen = seen_cache["seen"]
+        listed_today = set(pool)
+        keep_from = (today() - dt.timedelta(days=rf.get("keep_unlisted_days", 365))).isoformat()
+        remembered = {k for k, rec in seen.items()
+                      if k not in pool and rec.get("_listed", today().isoformat()) >= keep_from}
+        pool |= remembered
+        log(f"remembered titles no longer on any list: {len(remembered)}")
+
         # 3. Netflix official Top 10 (best effort)
         nf_items = []
         try:
@@ -820,19 +833,24 @@ def run(mode: str = "auto") -> dict:
                 prev = details_cache.get(k, {})
                 d["imdb"], d["imdb_votes"] = prev.get("imdb"), prev.get("imdb_votes")
 
-        # 5. Track when titles appear on each service (for "New on your services")
+        # 5. Track when titles appear on each service (for "New on your services"),
+        #    and the last day each title was on a list (see 2b)
         stamp = today().isoformat()
-        seen = seen_cache["seen"]
+        nf_ids_today = {r["id"] for r in netflix_rows}
         if not seen_cache.get("baseline"):
             seen_cache["baseline"] = stamp
         stamp = arrival_stamp(seen_cache, lists_signature(cfg), stamp)
         for k, d in details.items():
             rec = seen.get(k)
             if rec is None:
-                seen[k] = {"_first": stamp, **{s: stamp for s in d["services"]}}
+                rec = seen[k] = {"_first": stamp, **{s: stamp for s in d["services"]}}
             else:
                 for s in d["services"]:
                     rec.setdefault(s, stamp)
+            if k in listed_today or k in nf_ids_today:
+                rec["_listed"] = today().isoformat()
+            else:
+                rec.setdefault("_listed", today().isoformat())
     else:
         details = {k: dict(v) for k, v in (old.get("titles") or {}).items()}
         missing = [k for k in trending_keys if k not in details]

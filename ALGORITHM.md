@@ -51,7 +51,9 @@ The daily lookup limits reset at midnight UTC (7 PM Eastern in winter). A big ba
 | Most popular documentaries from the last 12 months | top 40, movies and TV (`genre_lists`) |
 | Classics: most-rated movies from before 1990 | top 60 (`genre_lists`) |
 
-Plus everything trending (Trakt top 100, TMDB's top 5 pages) and the Netflix Top 10. Only titles on at least one service stay in the data (about 2,700 in Nov 2026).
+Plus everything trending (Trakt top 100, TMDB's top 5 pages) and the Netflix Top 10. Only titles on at least one service stay in the data.
+
+**Titles that drop off every list** (no longer new or trending, say) are remembered: each morning's rebuild keeps checking which services they're on for a year after they were last on a list (`keep_unlisted_days` = 365), then they leave the data. So a saved title is only marked "No longer available" when it has really left every service (or after a year off every list). About 5,500 titles in mid-Nov 2026, growing slowly.
 
 **What each title carries:** services (TMDB, via JustWatch), genres (TMDB; "Sports" added from keywords), IMDb rating and votes (IMDb's daily file), Rotten Tomatoes and Metacritic (OMDb, then MDBList for gaps), TMDB's recommended and similar titles, release and latest-season dates (announced seasons that haven't aired are ignored), running time or season count, trailer, and exact Rotten Tomatoes and Metacritic page addresses (Wikidata).
 
@@ -172,6 +174,7 @@ Rows don't reshuffle while you browse, except:
 
 Newest first. Record each change to a rule or number here, with what was tried and why.
 
+- **Nov 15, 2026. Titles that drop off every list are remembered for a year.** Saved titles such as UNABOMBER and Below showed "No longer available" while still on Netflix: they had fallen off every list (no longer new or trending) and so out of the data, about 44 titles in a week. Now each title notes the last day it was on a list, and the morning rebuild keeps checking where it streams for a year after that. Tivvy can't see what people saved (it stays on their phones), so it keeps everything it has tracked. Also considered: renaming the note "No longer tracked" (honest but unhelpful) and keeping titles forever (the data would only grow).
 - **Nov 14, 2026. Your library ignores the home filters.** Katie's series The Body was on her watchlist but missing from the home row, because the home screen was set to Movies (the Your library page, with its own filter on TV & movies, showed it first). Saved titles silently disappearing was confusing; the filters are for browsing recommendations.
 - **Nov 14, 2026. Adding to the Your library pill on screen starts the row at the beginning.** Katie added The Body to her watchlist and it didn't show: the row had been swiped one poster over, kept its place, and the new first title sat just off the left edge until See all redrew it.
 - **Nov 14, 2026. Classics: before 1990 and top 60** (was before 1980 and top 40). Before the change Tivvy had 69 movies from before 1980 and only 41 from the 1980s, so the 1980s were as thin as older decades; 60 per service makes room for them without pushing out older classics.

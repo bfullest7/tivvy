@@ -165,6 +165,8 @@
       { "name": "recent documentaries", "genres": "99", "kinds": ["movie", "tv"], "sort_by": "popularity.desc", "days": 365, "pages": 2 },
       { "name": "classics", "kinds": ["movie"], "before": "1989-12-31", "pages": 3 }
     ],
+    "_keep_unlisted_note": "A title that drops off every list (no longer new, trending or among the best known) is still checked each morning for this many days after it was last on one, so saved titles aren't wrongly shown as \"No longer available\". After that it leaves the data.",
+    "keep_unlisted_days": 365,
     "trakt_trending_limit": 100,
     "tmdb_trending_pages": 5,
     "omdb_daily_limit": 900,
