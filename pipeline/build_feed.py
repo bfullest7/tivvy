@@ -558,11 +558,31 @@ def fresh_score(new_date: str | None, window: int, ref: dt.date) -> float:
     return round(100 * (1 - age / window), 1)
 
 
-def new_date_for(t: dict, seen: dict, baseline: str | None, window: int, ref: dt.date) -> str | None:
+SERVICE_SETTLE_DAYS = 3
+
+
+def services_added(seen_cache: dict, cfg: dict) -> dict[str, dt.date]:
+    """The day each service was added to Tivvy: a service's `added` date in config.json,
+    else recorded the first time it shows up (services already on titles count from the
+    baseline, i.e. they were there from the start)."""
+    rec = seen_cache.setdefault("services_added", {})
+    on_titles = {svc for r in seen_cache.get("seen", {}).values() for svc in r if not svc.startswith("_")}
+    for s in cfg.get("services", []):
+        if s.get("added"):
+            rec[s["key"]] = s["added"]
+        elif s["key"] not in rec:
+            rec[s["key"]] = (seen_cache.get("baseline") if s["key"] in on_titles else None) or today().isoformat()
+    return {svc: parse_date(d) for svc, d in rec.items()}
+
+
+def new_date_for(t: dict, seen: dict, baseline: str | None, window: int, ref: dt.date,
+                 added: dict | None = None) -> str | None:
     """Most recent sign the title is new on one of its services:
     a new season (TV), a recent release (movie), or showing up on a service
     since we started tracking (only counted for titles we already knew, or
-    recent releases, so old titles climbing the charts aren't called "new")."""
+    recent releases, so old titles climbing the charts aren't called "new").
+    A service added to Tivvy (e.g. Tubi) takes a few morning rebuilds to find all
+    its titles; showing up on it in its first SERVICE_SETTLE_DAYS days isn't an arrival."""
     candidates = []
     lo = ref - dt.timedelta(days=window)
 
@@ -581,12 +601,15 @@ def new_date_for(t: dict, seen: dict, baseline: str | None, window: int, ref: dt
         recent_release = release and (ref - release).days <= 365
         for svc in t["services"]:
             d = parse_date(rec.get(svc))
-            if ok(d) and d > base and ((first and d > first) or recent_release):
+            since = (added or {}).get(svc)
+            settled = not since or since <= base or d > since + dt.timedelta(days=SERVICE_SETTLE_DAYS)
+            if ok(d) and d > base and settled and ((first and d > first) or recent_release):
                 candidates.append(d)
     return max(candidates).isoformat() if candidates else None
 
 
-def add_scores(titles: dict, watchers: dict, tmdb_trend: dict, netflix_ranks: dict, seen: dict, baseline, cfg) -> None:
+def add_scores(titles: dict, watchers: dict, tmdb_trend: dict, netflix_ranks: dict, seen: dict, baseline, cfg,
+               added: dict | None = None) -> None:
     rk = cfg["ranking"]
     ref = today()
     rated = [t["imdb"] for t in titles.values() if t.get("imdb")]
@@ -602,7 +625,7 @@ def add_scores(titles: dict, watchers: dict, tmdb_trend: dict, netflix_ranks: di
         # the two parts are kept so the app can re-blend them using config.json
         t["trend_parts"] = {"trakt": trakt_part, "tmdb": tmdb_part}
         t["netflix_rank"] = netflix_ranks.get(t["id"])
-        t["new_date"] = new_date_for(t, seen, baseline, rk["new_window_days"], ref)
+        t["new_date"] = new_date_for(t, seen, baseline, rk["new_window_days"], ref, added)
         t["scores"] = {
             "audience": audience_score(t.get("imdb"), t.get("imdb_votes"), t["type"], mean, rk),
             "critic": critic_score(t.get("rt"), t.get("mc")),
@@ -983,7 +1006,8 @@ def run(mode: str = "auto") -> dict:
     # "more" (similar titles) only lists titles the app has, to keep the data small
     titles = {k: {**d, "more": [m for m in d.get("more") or [] if m in titles and m != k]} for k, d in titles.items()}
     netflix_ranks = {r["id"]: r["rank"] for r in netflix_rows}
-    add_scores(titles, watchers, tmdb_trend, netflix_ranks, seen_cache["seen"], seen_cache.get("baseline"), cfg)
+    add_scores(titles, watchers, tmdb_trend, netflix_ranks, seen_cache["seen"], seen_cache.get("baseline"), cfg,
+               services_added(seen_cache, cfg))
 
     stamp = now_iso()
     feed = {

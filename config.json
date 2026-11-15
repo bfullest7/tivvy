@@ -100,6 +100,7 @@
     },
     {
       "key": "starz",
+      "added": "2026-11-12",
       "name": "Starz",
       "color": "#000000",
       "provider_ids": [43],
@@ -109,6 +110,8 @@
     },
     {
       "key": "tubi",
+      "_added_note": "The day a service was added to Tivvy. Titles found on it in its first few days are not counted as new arrivals (they were already there).",
+      "added": "2026-11-12",
       "name": "Tubi",
       "color": "#7408FF",
       "provider_ids": [73],

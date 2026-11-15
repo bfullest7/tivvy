@@ -284,6 +284,18 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(feed["titles"]["t2"]["new_date"], "2026-11-08")
         self.assertEqual(feed["rows"]["new"][0], "t2")
 
+    def test_titles_found_on_a_newly_added_service_are_not_new(self):
+        ref = bf.parse_date("2026-11-15")
+        seen = {"m9": {"_first": "2026-11-06", "netflix": "2026-11-06", "tubi": "2026-11-13"}}
+        old_movie = {"id": "m9", "type": "movie", "release": "1954-04-26", "services": ["netflix", "tubi"]}
+        added = {"netflix": bf.parse_date("2026-11-06"), "tubi": bf.parse_date("2026-11-12")}
+        self.assertIsNone(bf.new_date_for(old_movie, seen, "2026-11-06", 30, ref, added))  # Tubi was just added
+        seen["m9"]["tubi"] = "2026-11-16"  # really arrives on Tubi after its first few days
+        self.assertEqual(bf.new_date_for(old_movie, seen, "2026-11-06", 30, bf.parse_date("2026-11-17"), added), "2026-11-16")
+        cfg = {"services": [{"key": "netflix"}, {"key": "tubi", "added": "2026-11-12"}, {"key": "max"}]}
+        got = bf.services_added({"baseline": "2026-11-06", "seen": seen}, cfg)
+        self.assertEqual((str(got["netflix"]), str(got["tubi"]), str(got["max"])), ("2026-11-06", "2026-11-12", TODAY))
+
     def test_long_description_ends_at_a_full_sentence(self):
         short = bf.shorten_overview
         self.assertEqual(short("A short one."), "A short one.")
