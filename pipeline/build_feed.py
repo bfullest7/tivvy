@@ -185,6 +185,25 @@ def save_json(path: Path, obj, compact: bool = False):
     path.write_text(text + "\n")
 
 
+ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "st", "jr", "sr", "vs", "mt", "lt", "no"}
+SENTENCE_END = re.compile(r'[.!?]["\u201d\u2019)]*(?=\s+["\u201c\u2018(]?[A-Z0-9])')
+
+
+def shorten_overview(text: str, limit: int = 450) -> str:
+    """Keeps the data small: a description over `limit` characters ends after its
+    last full sentence that fits, so it never stops mid-sentence. A period followed
+    by a lowercase word ("D.C. and") or after a title like "Mr." isn't a sentence end.
+    With no sentence end at all, it's cut at a word with "…"."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    ends = [m.end() for m in SENTENCE_END.finditer(text, 0, limit + 1)
+            if m.end() <= limit and text[:m.start()].rsplit(" ", 1)[-1].lower() not in ABBREVIATIONS]
+    if ends:
+        return text[:ends[-1]]
+    return text[:limit - 3].rsplit(" ", 1)[0] + "…"
+
+
 def clamp(x, lo=0.0, hi=100.0):
     return max(lo, min(hi, x))
 
@@ -288,9 +307,7 @@ class Tmdb:
             latest = max((s["air_date"] for s in seasons), default=date)
             runtime = None
             season_count = len(seasons) or None
-        overview = (d.get("overview") or "").strip()
-        if len(overview) > 450:
-            overview = overview[:447].rsplit(" ", 1)[0] + "…"
+        overview = shorten_overview(d.get("overview") or "")
         rec_ids = [r["id"] for r in (d.get("recommendations") or {}).get("results", [])]
         recs = [key_for(kind, i) for i in rec_ids[:12]]  # "Your taste": boosts titles like the ones you liked
         # For "Because you liked…" rows: all of TMDB's recommendations, then its similar titles

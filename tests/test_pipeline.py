@@ -284,6 +284,14 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(feed["titles"]["t2"]["new_date"], "2026-11-08")
         self.assertEqual(feed["rows"]["new"][0], "t2")
 
+    def test_long_description_ends_at_a_full_sentence(self):
+        short = bf.shorten_overview
+        self.assertEqual(short("A short one."), "A short one.")
+        text = "Steve lives in Washington, D.C. and adjusts. " + "x" * 30 + " Mr. Smith helps. " + "Word " * 100
+        self.assertEqual(short(text, 100), "Steve lives in Washington, D.C. and adjusts. " + "x" * 30 + " Mr. Smith helps.")
+        self.assertEqual(short('He said "go". Then ' + "More " * 100, 30), 'He said "go".')
+        self.assertEqual(short("no sentence end at all " * 30, 40), "no sentence end at all no sentence…")
+
     def test_title_off_every_list_is_remembered_for_a_year(self):
         bf.run("full")
         U["m2"]["unlisted"] = True  # Tiny Indie drops off every list but stays on Hulu
