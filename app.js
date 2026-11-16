@@ -220,6 +220,9 @@
   const recentZeroDays = () => (feed.row_tilt || {}).recency_zero_days ?? 3 * 365;
   // a new season of an older show counts this fraction of a brand-new title
   const seasonCredit = () => (feed.row_tilt || {}).recency_season_credit ?? 0.25;
+  // an older title (past the fade, e.g. Heathers) newly arriving on a service counts this
+  // fraction, so it shows in "New on your services" without outranking new releases elsewhere
+  const oldArrivalCredit = () => (feed.row_tilt || {}).recency_old_arrival_credit ?? 0.25;
   function ageScore(iso) {
     if (!iso) return 0;
     const days = (Date.now() - new Date(iso + "T12:00:00").getTime()) / 86400000;
@@ -232,7 +235,7 @@
     const parts = {
       release: ageScore(t.release),
       season: t.type === "tv" && t.latest_air !== t.release ? seasonCredit() * ageScore(t.latest_air) : 0,
-      arrival: t.scores.fresh || 0,
+      arrival: (t.scores.fresh || 0) * (ageScore(t.type === "tv" ? t.latest_air || t.release : t.release) > 0 ? 1 : oldArrivalCredit()),
     };
     const top = Object.keys(parts).reduce((a, b) => (parts[b] > parts[a] ? b : a));
     return { score: Math.round(parts[top] * 10) / 10, why: top };
@@ -316,7 +319,18 @@
     if (!seeds.length) return null;
     const ok = seeds.filter((id) => similarTo(id).length >= BECAUSE_MIN);
     const taste = tasteModel();
-    const ranked = (items) => sinkDisliked(rotate(items.map((t) => ({ t, s: pickScore(t, taste) })).sort((a, b) => b.s - a.s).map((x) => x.t), "because"));
+    // Newer titles first: similar titles to an older favorite are mostly older, so newness counts
+    // extra here, on a longer scale than New & recent (100 for this year, fading to 0 at 15 years),
+    // so a 2020 movie still leads a 1994 one.
+    const tilt = feed.row_tilt || {};
+    const w = tilt.because_recency ?? 0.4, fadeYears = tilt.because_fade_years ?? 15;
+    const newness = (t) => {
+      const d = t.type === "tv" ? t.latest_air || t.release : t.release;
+      const years = d ? (Date.now() - new Date(d + "T12:00:00").getTime()) / (365.25 * 86400000) : fadeYears;
+      return Math.max(recency(t).score, 100 * Math.max(0, 1 - years / fadeYears));
+    };
+    const ranked = (items) => sinkDisliked(rotate(items.map((t) => ({ t, s: (1 - w) * pickScore(t, taste) + w * newness(t) }))
+      .sort((a, b) => b.s - a.s).map((x) => x.t), "because"));
     if (!ok.length) {
       const pool = [...new Map(seeds.flatMap((id) => similarTo(id)).map((t) => [t.id, t])).values()];
       return pool.length >= POOL_MIN ? { title: "Based on your favorites", items: ranked(pool) } : null;
@@ -1652,7 +1666,7 @@
       ["Netflix Top 10", `
         <p>Netflix's own official list of its most-watched shows and films in the US, published weekly. Shown only when the <b>Netflix</b> filter is selected, and not used in any ranking, since other services don't publish equivalent numbers.</p>`],
       ["Because you liked…", `
-        <p>Once you've liked or saved a title, a row right below Your library shows similar shows and movies (from TMDB), best matches for you first. It's about one title at a time: your likes first ("Because you liked…"), newest first, then titles on your watchlist ("More like…"). It moves on to the next one the first time you open the app each day. If none has enough similar titles yet, the row is "Based on your favorites" and mixes them together. Titles you've liked, watched or marked Not for me are left out, and watched titles only count when you've liked them.</p>`],
+        <p>Once you've liked or saved a title, a row right below Your library shows similar shows and movies (from TMDB), best matches for you first, with newer titles leading. It's about one title at a time: your likes first ("Because you liked…"), newest first, then titles on your watchlist ("More like…"). It moves on to the next one the first time you open the app each day. If none has enough similar titles yet, the row is "Based on your favorites" and mixes them together. Titles you've liked, watched or marked Not for me are left out, and watched titles only count when you've liked them.</p>`],
       ["Genre picks and hidden gems", `
         <p><b>Genre rows</b> like "Crime picks for you" come from genres you 👍 in <b>Genres</b> (or, without any, from titles you've liked), ordered by your match score like Top Picks. You get one or two, different genres each day. Very broad genres like Drama are skipped when you like others.</p>
         <p><b>Hidden gems:</b> the 10th spot in Top Picks (and every 10th from #30 in "See all") holds a title critics and audiences rate very highly that isn't trending or widely watched, to mix things up. Never from a genre you 👎. Once you've seen one for a couple of days, another takes its place.</p>`],
@@ -1666,7 +1680,7 @@
         <p>Score by how long ago a title came out:</p>
         ${barsHtml([["Up to 3 months", 90], ["6 months", 182], ["1 year", 365], ["18 months", 547], ["2 years", 730], ["3 years", 1095]]
           .map(([name, days]) => { const v = Math.round(scoreAtAge(days)); return { name, value: v / 100, label: String(v) }; }))}
-        <p>Full credit (100) for titles released or premiered in the last ${ageText(recentFullDays())}, then fading steadily to 0 at ${ageText(recentZeroDays())} old (for example, a 1-year-old title scores ${Math.round(100 * (1 - (365 - recentFullDays()) / (recentZeroDays() - recentFullDays())))}). A new season of an older show counts ${seasonCredit() === 0.25 ? "a quarter" : seasonCredit() === 0.5 ? "half" : Math.round(seasonCredit() * 100) + "%"}, so long-running shows don't look brand new every season. Arriving on a service in the last 30 days counts fully.</p>`],
+        <p>Full credit (100) for titles released or premiered in the last ${ageText(recentFullDays())}, then fading steadily to 0 at ${ageText(recentZeroDays())} old (for example, a 1-year-old title scores ${Math.round(100 * (1 - (365 - recentFullDays()) / (recentZeroDays() - recentFullDays())))}). A new season of an older show counts ${seasonCredit() === 0.25 ? "a quarter" : seasonCredit() === 0.5 ? "half" : Math.round(seasonCredit() * 100) + "%"}, so long-running shows don't look brand new every season. Arriving on a service in the last 30 days counts fully for a recent title, and ${oldArrivalCredit() === 0.25 ? "a quarter" : Math.round(oldArrivalCredit() * 100) + "%"} for an older one (over ${ageText(recentZeroDays())} old), so a classic newly added to a service shows in New on your services without outranking new releases.</p>`],
       ["Signal: Audience, Critics, Trending", `
         <p><b>Audience</b> is the vote-adjusted IMDb rating (5.0 or lower scores 0, 9.0 or higher scores 100). <b>Critics</b> is the Rotten Tomatoes / Metacritic average. <b>Trending</b> is the TMDB/Trakt blend from the Trending now row (without that row's recency share, since New &amp; recent is its own signal).</p>`],
       ["Watchlist & watched", `

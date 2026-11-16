@@ -137,6 +137,10 @@
     "recency_full_days": 90,
     "recency_zero_days": 1095,
     "recency_season_credit": 0.25,
+    "_old_arrival_note": "An older title (past recency_zero_days) arriving on a service counts this fraction as New & recent. because_recency: newness share in the \"Because you liked\" row (score = (1 - w) x match + w x newness, where newness is 100 this year fading to 0 at because_fade_years).",
+    "recency_old_arrival_credit": 0.25,
+    "because_recency": 0.4,
+    "because_fade_years": 15,
     "top_picks_min_imdb_votes": 5000
   },
   "ranking": {
