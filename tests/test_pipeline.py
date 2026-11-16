@@ -186,8 +186,13 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(T["m3"]["services"], ["netflix"])
         self.assertEqual(T["m1"]["trailer"], "main1")  # newest official YouTube trailer
         # top-billed cast first; "Self" roles blank, "(voice)" dropped; shows use the whole series' cast
-        self.assertEqual(T["m1"]["cast"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
-        self.assertEqual(T["t1"]["cast"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
+        # cast lives in its own small files (data/cast/NN.json by TMDB id), loaded when a title opens
+        cast01 = json.loads((self.tmp / "data" / "cast" / "01.json").read_text())
+        self.assertEqual(cast01["m1"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
+        self.assertEqual(cast01["t1"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
+        self.assertEqual(len(list((self.tmp / "data" / "cast").glob("*.json"))), 100)
+        for f in bf.NOT_FOR_PHONES:  # not in the file every phone downloads
+            self.assertNotIn(f, T["m1"])
         self.assertIsNone(T["t2"]["trailer"])  # none listed: no button in the app
         # similar titles: recommendations first, then TMDB similar, no repeats, only titles in the app, never itself
         self.assertEqual(T["t2"]["more"], ["t1", "t3"])
@@ -259,12 +264,13 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(T["t3"]["netflix_rank"], 1)
         # every title has the fields the app needs
         for t in T.values():
-            for f in ("id", "type", "title", "services", "genres", "recs", "link", "scores", "watchers"):
+            for f in ("id", "type", "title", "services", "genres", "recs", "scores", "watchers"):
                 self.assertIn(f, t)
         self.assertTrue((self.tmp / "data" / "feed.json").exists())
 
     def test_trending_refresh_reuses_data(self):
         bf.run("full")
+        cast_before = (self.tmp / "data" / "cast" / "01.json").read_text()
         calls_before, omdb_before = len(self.fake.calls), self.fake.omdb_calls
         WATCHERS["t2"] = 900
         try:
@@ -281,6 +287,7 @@ class PipelineTest(unittest.TestCase):
         self.assertGreater(feed["titles"]["t2"]["scores"]["buzz"], 95)
         self.assertEqual(feed["full_refreshed_at"], f"{TODAY}T12:00:00Z")
         self.assertEqual(feed["trending_updated_at"], f"{TODAY}T14:00:00Z")
+        self.assertEqual((self.tmp / "data" / "cast" / "01.json").read_text(), cast_before)  # cast kept between morning rebuilds
 
     def test_newly_added_to_service(self):
         bf.run("full")

@@ -840,7 +840,7 @@
         <button class="thumb up" data-thumb="1" aria-pressed="${thumb > 0}">👍 Like</button>
         <button class="thumb down" data-thumb="-1" aria-pressed="${thumb < 0}">👎 Not for me</button>
       </div>
-      ${t.gone ? "" : castHtml(t)}
+      ${t.gone ? "" : castSection(t)}
       ${t.gone ? "" : whyThisPick(t)}`;
     const newTitle = $("#details").dataset.id !== id;
     $("#details").dataset.id = id;
@@ -929,13 +929,39 @@
 
   /* Cast: top-billed actors (up to 8): rounded photo, then name and character left-aligned, scrolling sideways.
      No photo: their initials in a plain circle. */
-  function castHtml(t) {
-    if (!t.cast?.length) return "";
+  /* Cast isn't in feed.json (it would make every download about 30% bigger): it's in 100 small
+     files, data/cast/NN.json by TMDB id (m55721 -> 21), fetched when a title's screen opens and
+     kept for the rest of the visit. Until it arrives the section is an empty placeholder. */
+  const castFiles = {}; // "<data version>|NN" -> { promise, data }
+  function castFile(id) {
+    const nn = String(parseInt(id.slice(1), 10) % 100).padStart(2, "0");
+    const key = `${feed.generated_at}|${nn}`;
+    if (!castFiles[key]) {
+      const entry = (castFiles[key] = {});
+      entry.promise = fetch(`data/cast/${nn}.json?d=${encodeURIComponent(feed.generated_at)}`)
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((data) => (entry.data = data))
+        .catch(() => { delete castFiles[key]; return {}; });
+    }
+    return castFiles[key];
+  }
+  function castSection(t) {
+    if (t.cast) return castHtml(t.cast); // data from before cast moved to its own files
+    const file = castFile(t.id);
+    if (file.data) return castHtml(file.data[t.id]);
+    file.promise.then((data) => {
+      const el = document.querySelector(`#details [data-cast-for="${CSS.escape(t.id)}"]`);
+      if (el) el.outerHTML = castHtml(data[t.id]);
+    });
+    return `<section class="cast" data-cast-for="${esc(t.id)}" hidden></section>`;
+  }
+  function castHtml(cast) {
+    if (!cast?.length) return "";
     const initials = (n) => n.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     return `
       <section class="cast">
         <h3>Cast</h3>
-        <div class="cast-scroll">${t.cast.map(([name, role, photo]) => `
+        <div class="cast-scroll">${cast.map(([name, role, photo]) => `
           <div class="cast-card">
             ${photo ? `<img class="cast-photo" loading="lazy" src="${IMG}w185${esc(photo)}" alt="">` : `<div class="cast-photo no-photo">${esc(initials(name))}</div>`}
             <div class="cast-name">${esc(name)}</div>

@@ -223,6 +223,28 @@ def top_cast(d: dict, kind: str, limit: int = 8) -> list:
     return out
 
 
+# Kept in the cache for checking, but not sent to phones: cast goes in its own small files
+# (loaded when a title's screen opens), and the app doesn't use the others.
+NOT_FOR_PHONES = ("cast", "link", "sports_keywords")
+CAST_SHARDS = 100
+
+
+def cast_shard(key: str) -> str:
+    """Which cast file a title is in: data/cast/NN.json, by its TMDB id (m55721 -> 21)."""
+    return f"{int(key[1:]) % CAST_SHARDS:02d}"
+
+
+def write_cast_files(titles: dict, details_cache: dict) -> int:
+    shards: dict[str, dict] = {f"{n:02d}": {} for n in range(CAST_SHARDS)}
+    for k, d in titles.items():
+        cast = d["cast"] if "cast" in d else (details_cache.get(k) or {}).get("cast")
+        if cast:
+            shards[cast_shard(k)][k] = cast
+    for n, items in shards.items():
+        save_json(DATA / "cast" / f"{n}.json", items, compact=True)
+    return sum(len(v) for v in shards.values())
+
+
 def clamp(x, lo=0.0, hi=100.0):
     return max(lo, min(hi, x))
 
@@ -1043,11 +1065,12 @@ def run(mode: str = "auto") -> dict:
         "services": [{k: s[k] for k in ("key", "name", "color")} for s in cfg["services"]],
         "weights": cfg["weights"],
         "row_length": cfg["ranking"]["row_length"],
-        "titles": titles,
+        "titles": {k: {f: v for f, v in d.items() if f not in NOT_FOR_PHONES} for k, d in titles.items()},
         "rows": build_rows(titles, netflix_rows, cfg),
     }
 
     save_json(feed_path, feed, compact=True)
+    log(f"cast files: {write_cast_files(titles, details_cache)} titles with cast")
     if mode == "full":
         save_json(CACHE / "details.json", details, compact=True)
         save_json(CACHE / "first_seen.json", seen_cache, compact=True)

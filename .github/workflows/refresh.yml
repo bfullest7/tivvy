@@ -72,6 +72,7 @@ jobs:
           echo "{\"version\": \"$v\"}" > _site/version.json
           grep -n "?v=" _site/index.html
           mkdir -p _site/data && cp data/feed.json _site/data/ 2>/dev/null || true
+          cp -r data/cast _site/data/ 2>/dev/null || true  # cast, loaded when a title's screen opens
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
