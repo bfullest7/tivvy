@@ -785,9 +785,9 @@
 
   /* Home-row posters arrive a row at a time: in each row, the posters you can see (the first 4)
      wait on their grey cards until all of them have downloaded (at most about a second), then
-     fade in together. The rest of the row then downloads quietly in the background, so they're
-     ready when you swipe; one that isn't yet fades in when it arrives. Posters already on the
-     phone show at once, with no fade, so redrawing a row never flickers. */
+     fade in together. Posters further along download as you swipe near them (as before, to keep
+     data use low) and fade in as they arrive. Posters already on the phone show at once, with
+     no fade, so redrawing a row never flickers. */
   const ROW_GROUP = 4, ROW_WAIT_MS = 1000;
   const loaded = (img) => img.complete && img.naturalWidth > 0;
   const whenLoaded = (img) => new Promise((done) => {
@@ -802,8 +802,7 @@
     const first = imgs.filter((img) => cards.indexOf(img.closest(".card")) < ROW_GROUP);
     const rest = imgs.filter((img) => !first.includes(img));
     const show = (list, fade) => list.forEach((img) => { img.classList.remove("waiting"); if (!fade) img.classList.add("instant"); img.classList.add("shown"); });
-    const restNow = () => rest.forEach((img) => {
-      img.loading = "eager"; // download the rest of the row in the background
+    const restNow = () => rest.forEach((img) => { // still downloaded only when you swipe near them
       if (loaded(img)) show([img], false); else { img.classList.add("waiting"); whenLoaded(img).then(() => show([img], true)); }
     });
     if (first.every(loaded)) { show(first, false); restNow(); return; }
