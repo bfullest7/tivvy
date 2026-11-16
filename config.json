@@ -174,6 +174,8 @@
     ],
     "_keep_unlisted_note": "A title that drops off every list (no longer new, trending or among the best known) is still checked each morning for this many days after it was last on one, so saved titles aren't wrongly shown as \"No longer available\". After that it leaves the data.",
     "keep_unlisted_days": 365,
+    "_feed_size_alarm_note": "After each data refresh, the run fails (GitHub emails a notice) if data/feed.json is bigger than this compressed. The data still publishes. 1.7 MB in mid-Nov 2026.",
+    "feed_size_alarm_mb": 2.5,
     "trakt_trending_limit": 100,
     "tmdb_trending_pages": 5,
     "omdb_daily_limit": 900,

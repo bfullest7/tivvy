@@ -80,3 +80,20 @@ jobs:
           path: _site
       - id: deploy
         uses: actions/deploy-pages@v4
+
+      # Size alarm: after publishing (so nothing is held back), fail the run if the file every
+      # phone downloads has grown past the limit in config.json. GitHub then emails a
+      # "workflow failed" notice; the data and app are already live.
+      - name: Check download size
+        if: github.event_name != 'push'
+        run: |
+          python - <<'PY'
+          import gzip, json, sys
+          limit = json.load(open("config.json"))["refresh"].get("feed_size_alarm_mb", 2.5)
+          raw = open("data/feed.json", "rb").read()
+          mb = len(gzip.compress(raw, 9)) / 1e6
+          print(f"feed.json: {len(raw) / 1e6:.1f} MB, {mb:.2f} MB compressed (alarm at {limit} MB)")
+          if mb > limit:
+              print(f"::error title=Data file too big::feed.json is {mb:.2f} MB compressed, over the {limit} MB limit. Ask Claude to find what grew and trim it.")
+              sys.exit(1)
+          PY

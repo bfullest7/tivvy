@@ -21,6 +21,7 @@
 - `.github/workflows/refresh.yml` refreshes the data every 2 hours and publishes the site on every push (data-only commits are skipped).
 - On publish, the app version is a fingerprint of `index.html`, `app.js` and `styles.css`. It's stamped into the page and `version.json`, which drives the "Update available" banner.
 - New site files must be added to the workflow's "Collect site files" copy step.
+- **Keep the data download small.** `data/feed.json` is downloaded by every phone (1.7 MB compressed in mid-Nov 2026). Before adding a tracked list, a service or a new field per title, estimate how much it adds and tell Beth; put data only a title's screen needs in separate files (like `data/cast/`). The workflow's "Check download size" step fails the run (GitHub emails Beth) when it passes `feed_size_alarm_mb` in config.json (2.5); the data still publishes. If that email comes, find what grew and trim it.
 - Don't push while a manually started data refresh is still queued: a newer run cancels the pending one.
 
 ## iPhone home-screen quirks (already handled; be careful changing)
