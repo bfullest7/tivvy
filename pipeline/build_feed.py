@@ -236,7 +236,7 @@ def clean_role(role: str | None) -> str:
 CAST_MIN_PHOTOS = 3
 
 
-CAST_LIST_MAX = 6
+CAST_LIST_MAX = 8  # the same as the photo tiles (and all that is stored)
 
 
 def shown_cast(cast: list | None) -> list | None:
@@ -248,7 +248,7 @@ def shown_cast(cast: list | None) -> list | None:
 
 def cast_list(cast: list | None) -> list | None:
     """With fewer than 3 photos (mostly documentaries about real people), the cast is a short
-    line of names instead of tiles: [[name, role], ...], up to 6. Small, so it goes in feed.json
+    line of names instead of tiles: [[name, role], ...], up to 8. Small, so it goes in feed.json
     and shows instantly."""
     if not cast or shown_cast(cast):
         return None
