@@ -333,8 +333,10 @@
       const years = d ? (Date.now() - new Date(d + "T12:00:00").getTime()) / (365.25 * 86400000) : fadeYears;
       return Math.max(recency(t).score, 100 * Math.max(0, 1 - years / fadeYears));
     };
-    const ranked = (items, key) => { becauseKey = key; return sinkDisliked(rotate(items.map((t) => ({ t, s: (1 - w) * pickScore(t, taste) + w * newness(t) }))
-      .sort((a, b) => b.s - a.s).map((x) => x.t), key)); };
+    // Genre 👎s don't sink titles here: you picked this title yourself, so its row shows what's
+    // really similar to it (a 👎 on Comedy shouldn't bury the comedies like a comedy you saved).
+    const ranked = (items, key) => { becauseKey = key; return rotate(items.map((t) => ({ t, s: (1 - w) * pickScore(t, taste) + w * newness(t) }))
+      .sort((a, b) => b.s - a.s).map((x) => x.t), key); };
     if (!ok.length) {
       const pool = [...new Map(seeds.flatMap((id) => similarTo(id)).map((t) => [t.id, t])).values()];
       return pool.length >= POOL_MIN ? { title: "Based on your favorites", items: ranked(pool, "because:favorites") } : null;
@@ -1679,7 +1681,7 @@
       ["Signal: Your taste", `
         <p>Built from your 👍/👎 on titles and your 👍/👎 on genres in <b>Genres</b>. Starts at 50 (neutral). Each 👍 on a title raises its genres, common ones less (Drama about a quarter as much as a rare genre), so one liked drama doesn't fill Top Picks with dramas. A 👎 (Not for me) on a title doesn't lower its genres, since it's usually about that title, not the whole genre; use <b>Genres</b> for that. A genre you set in <b>Genres</b> counts like two title thumbs. Titles TMDB lists as similar to ones you liked get a boost, and similar to ones you marked Not for me a drop.</p>
         <p>Not counted until you rate something or pick a genre.</p>
-        <p>Genres you 👎 in <b>Genres</b> apply to every row: titles in those genres move to the end, after everything else (unless they're also in a genre you 👍). Your library and the Netflix Top 10 aren't affected.</p>`],
+        <p>Genres you 👎 in <b>Genres</b> apply to every row: titles in those genres move to the end, after everything else (unless they're also in a genre you 👍). Your library, "Because you liked…" (it's about a title you picked) and the Netflix Top 10 aren't affected.</p>`],
       ["Signal: New & recent", `
         <p>Score by how long ago a title came out:</p>
         ${barsHtml([["Up to 3 months", 90], ["6 months", 182], ["1 year", 365], ["18 months", 547], ["2 years", 730], ["3 years", 1095]]
