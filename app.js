@@ -945,19 +945,43 @@
     }
     return castFiles[key];
   }
+  /* Photos: the grey tiles stay until the photos you can see (the first 4) have downloaded, at
+     most about a second, then the whole cast fades in at once instead of photo by photo. Photos
+     further along fade in as they arrive. Loading starts when a finger touches a poster. */
+  const castShown = new Set(); // titles whose first photos are ready this visit (shown at once)
+  function preloadCastPhotos(cast, maxMs = 1000) {
+    const one = (path) => new Promise((done) => {
+      const im = new Image();
+      im.onload = im.onerror = () => done();
+      im.src = `${IMG}w185${path}`;
+    });
+    const photos = cast.slice(0, 4).map((p) => p[2]).filter(Boolean);
+    return Promise.race([Promise.all(photos.map(one)), new Promise((done) => setTimeout(done, maxMs))]);
+  }
+  function prefetchCast(id) {
+    const file = castFile(id);
+    file.promise.then((data) => data[id] && preloadCastPhotos(data[id]));
+  }
   function castSection(t) {
     if (t.cast) return castHtml(t.cast); // data from before cast moved to its own files
+    if (feed.cast_flags && !t.has_cast) return ""; // no Cast section for this title: no placeholder either
     const file = castFile(t.id);
-    if (file.data) return castHtml(file.data[t.id]);
-    // Not loaded yet: the heading and grey tiles hold the space, so nothing jumps; the names and
-    // photos fade in when the file arrives (usually before you notice: loading starts when you
-    // touch a poster). No cast for this title (rare): the placeholder fades away.
+    if (file.data && castShown.has(t.id)) return castHtml(file.data[t.id]);
+    // Until then the heading and grey tiles hold the space, so nothing moves.
+    // No cast after all (older data): the placeholder fades away.
     file.promise.then((data) => {
-      const el = document.querySelector(`#details [data-cast-for="${CSS.escape(t.id)}"]`);
-      if (!el) return;
-      if (data[t.id]?.length) { el.outerHTML = castHtml(data[t.id], true); return; }
-      el.classList.add("is-gone");
-      setTimeout(() => el.remove(), 150);
+      const cast = data[t.id];
+      const el = () => document.querySelector(`#details [data-cast-for="${CSS.escape(t.id)}"]`);
+      if (!cast?.length) {
+        const e = el();
+        if (e) { e.classList.add("is-gone"); setTimeout(() => e.remove(), 150); }
+        return;
+      }
+      preloadCastPhotos(cast).then(() => {
+        castShown.add(t.id);
+        const e = el();
+        if (e) e.outerHTML = castHtml(cast, true);
+      });
     });
     const tile = `<div class="cast-card"><div class="cast-photo"></div><div class="skel-line"></div><div class="skel-line short"></div></div>`;
     return `<section class="cast is-loading" data-cast-for="${esc(t.id)}" aria-hidden="true"><h3>Cast</h3><div class="cast-scroll">${tile.repeat(4)}</div></section>`;
@@ -968,9 +992,11 @@
     return `
       <section class="cast${fadeIn ? " fade-in" : ""}">
         <h3>Cast</h3>
-        <div class="cast-scroll">${cast.map(([name, role, photo]) => `
+        <div class="cast-scroll">${cast.map(([name, role, photo], i) => `
           <div class="cast-card">
-            ${photo ? `<img class="cast-photo" loading="lazy" src="${IMG}w185${esc(photo)}" alt="">` : `<div class="cast-photo no-photo">${esc(initials(name))}</div>`}
+            ${photo
+              ? `<div class="cast-photo"><img loading="${i < 4 ? "eager" : "lazy"}" src="${IMG}w185${esc(photo)}" alt="" onload="this.classList.add('in')"></div>`
+              : `<div class="cast-photo no-photo">${esc(initials(name))}</div>`}
             <div class="cast-name">${esc(name)}</div>
             ${role ? `<div class="cast-role">${esc(role)}</div>` : ""}
           </div>`).join("")}
@@ -1940,7 +1966,8 @@
     // Start loading a title's cast as soon as a finger touches its poster, before the tap opens it
     document.addEventListener("pointerdown", (e) => {
       const id = e.target.closest?.("[data-id]")?.dataset.id;
-      if (id && feed?.titles?.[id] && !feed.titles[id].cast) castFile(id);
+      const t = id && feed?.titles?.[id];
+      if (t && !t.cast && (!feed.cast_flags || t.has_cast)) prefetchCast(id);
     }, { passive: true, capture: true });
     $("#rows").addEventListener("click", (e) => {
       const setBtn = e.target.closest("[data-open-settings]");

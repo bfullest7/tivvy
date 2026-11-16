@@ -215,12 +215,33 @@ def top_cast(d: dict, kind: str, limit: int = 8) -> list:
     out = []
     for c in sorted(raw or [], key=lambda c: c.get("order", 999))[:limit]:
         role = c.get("character") if kind == "movie" else ((c.get("roles") or [{}])[0].get("character"))
-        role = re.sub(r"\s*\((?:voice|uncredited)\)", "", role or "", flags=re.I).strip()
-        if role.lower() in SELF_ROLES:
-            role = ""
         if c.get("name"):
-            out.append([c["name"], role[:40], c.get("profile_path")])
+            out.append([c["name"], clean_role(role), c.get("profile_path")])
     return out
+
+
+SELF_PREFIX = re.compile(r"^(?:self|himself|herself|themselves)\s*[-–—:/,]\s*", re.I)
+
+
+def clean_role(role: str | None) -> str:
+    """Tidy a character name for the cast list: drop notes like "(voice)" or "(archive footage)",
+    "Self - Mother of Taylor" becomes "Mother of Taylor", and plain "Self" (documentaries) is blank."""
+    role = re.sub(r"\s*\((?:voice|uncredited|archive[^)]*)\)", "", role or "", flags=re.I).strip()
+    role = SELF_PREFIX.sub("", role).strip()
+    if role.lower() in SELF_ROLES or role.lower() == "others":
+        return ""
+    return role[:40]
+
+
+CAST_MIN_PHOTOS = 3
+
+
+def shown_cast(cast: list | None) -> list | None:
+    """The cast as shown: roles tidied; none at all when fewer than 3 people have a photo
+    (mostly documentaries about real people, whose cast would be rows of initials)."""
+    if not cast or sum(1 for p in cast if p[2]) < CAST_MIN_PHOTOS:
+        return None
+    return [[name, clean_role(role), photo] for name, role, photo in cast]
 
 
 # Kept in the cache for checking, but not sent to phones: cast goes in its own small files
@@ -234,12 +255,20 @@ def cast_shard(key: str) -> str:
     return f"{int(key[1:]) % CAST_SHARDS:02d}"
 
 
-def write_cast_files(titles: dict, details_cache: dict) -> int:
-    shards: dict[str, dict] = {f"{n:02d}": {} for n in range(CAST_SHARDS)}
+def cast_for_titles(titles: dict, details_cache: dict) -> dict:
+    """Each title's cast as shown (see shown_cast), from this run's details or the cache."""
+    out = {}
     for k, d in titles.items():
-        cast = d["cast"] if "cast" in d else (details_cache.get(k) or {}).get("cast")
+        cast = shown_cast(d["cast"] if "cast" in d else (details_cache.get(k) or {}).get("cast"))
         if cast:
-            shards[cast_shard(k)][k] = cast
+            out[k] = cast
+    return out
+
+
+def write_cast_files(cast_for: dict) -> int:
+    shards: dict[str, dict] = {f"{n:02d}": {} for n in range(CAST_SHARDS)}
+    for k, cast in cast_for.items():
+        shards[cast_shard(k)][k] = cast
     for n, items in shards.items():
         save_json(DATA / "cast" / f"{n}.json", items, compact=True)
     return sum(len(v) for v in shards.values())
@@ -1053,6 +1082,7 @@ def run(mode: str = "auto") -> dict:
     add_scores(titles, watchers, tmdb_trend, netflix_ranks, seen_cache["seen"], seen_cache.get("baseline"), cfg,
                services_added(seen_cache, cfg))
 
+    cast_for = cast_for_titles(titles, details_cache)
     stamp = now_iso()
     feed = {
         "version": 1,
@@ -1065,12 +1095,14 @@ def run(mode: str = "auto") -> dict:
         "services": [{k: s[k] for k in ("key", "name", "color")} for s in cfg["services"]],
         "weights": cfg["weights"],
         "row_length": cfg["ranking"]["row_length"],
-        "titles": {k: {f: v for f, v in d.items() if f not in NOT_FOR_PHONES} for k, d in titles.items()},
+        "cast_flags": 1,  # titles with a Cast section say so ("has_cast"), so others show no placeholder
+        "titles": {k: {**{f: v for f, v in d.items() if f not in NOT_FOR_PHONES and f != "has_cast"}, **({"has_cast": 1} if k in cast_for else {})}
+                   for k, d in titles.items()},
         "rows": build_rows(titles, netflix_rows, cfg),
     }
 
     save_json(feed_path, feed, compact=True)
-    log(f"cast files: {write_cast_files(titles, details_cache)} titles with cast")
+    log(f"cast files: {write_cast_files(cast_for)} titles with cast")
     if mode == "full":
         save_json(CACHE / "details.json", details, compact=True)
         save_json(CACHE / "first_seen.json", seen_cache, compact=True)

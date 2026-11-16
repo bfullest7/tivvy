@@ -146,7 +146,11 @@ class FakeHttp:
                 {"site": "YouTube", "type": "Trailer", "official": True, "key": "main1", "iso_639_1": "en", "published_at": "2024-02-01"},
                 {"site": "Vimeo", "type": "Trailer", "official": True, "key": "vimeo1", "iso_639_1": "en", "published_at": "2024-02-02"}]}
         people = [{"name": "Ann Lead", "order": 1, "profile_path": "/ann.jpg", "char": "Jo (voice)"},
-                  {"name": "Bo Host", "order": 0, "profile_path": None, "char": "Self"}]
+                  {"name": "Bo Host", "order": 0, "profile_path": None, "char": "Self"},
+                  {"name": "Cy Mom", "order": 2, "profile_path": "/cy.jpg", "char": "Self - Mother of Jo"},
+                  {"name": "Di Old", "order": 3, "profile_path": "/di.jpg" if k != "t2" else None, "char": "Self (archive footage)"}]
+        if k == "t2":  # Cozy Show: only 2 of its cast have photos -> no Cast section
+            people = people[:3]
         if kind == "movie":
             d["credits"] = {"cast": [{**{k: v for k, v in p.items() if k != "char"}, "character": p["char"]} for p in people]}
         else:
@@ -188,8 +192,14 @@ class PipelineTest(unittest.TestCase):
         # top-billed cast first; "Self" roles blank, "(voice)" dropped; shows use the whole series' cast
         # cast lives in its own small files (data/cast/NN.json by TMDB id), loaded when a title opens
         cast01 = json.loads((self.tmp / "data" / "cast" / "01.json").read_text())
-        self.assertEqual(cast01["m1"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
-        self.assertEqual(cast01["t1"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
+        # roles tidied ("(voice)", "Self - …", "Self (archive footage)"); people without a photo are kept
+        want = [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"], ["Cy Mom", "Mother of Jo", "/cy.jpg"], ["Di Old", "", "/di.jpg"]]
+        self.assertEqual(cast01["m1"], want)
+        self.assertEqual(cast01["t1"], want)
+        # fewer than 3 people with a photo: no Cast section, and the app is told so
+        cast02 = json.loads((self.tmp / "data" / "cast" / "02.json").read_text())
+        self.assertNotIn("t2", cast02)
+        self.assertEqual((T["m1"].get("has_cast"), T["t2"].get("has_cast")), (1, None))
         self.assertEqual(len(list((self.tmp / "data" / "cast").glob("*.json"))), 100)
         for f in bf.NOT_FOR_PHONES:  # not in the file every phone downloads
             self.assertNotIn(f, T["m1"])
