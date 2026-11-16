@@ -89,6 +89,9 @@
      when the rows are drawn (the count for today isn't used until tomorrow), and resets after
      14 days unseen in that row. Your library and the Netflix Top 10 aren't affected. */
   let seen = {}; // "row|id" -> { n: days seen in that row, d: last day seen (YYYY-MM-DD) }
+  // The "Because you liked…" row counts separately for each title it's about ("because:<id>"),
+  // so passing over a title in one favorite's row doesn't move it down in another's.
+  let becauseKey = "because";
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const rot = () => ({ start_day: 3, places_per_day: 5, reset_days: 14, ...(feed?.rotation || {}) });
   const daysSince = (day) => (new Date(today()) - new Date(day)) / 86400000;
@@ -119,7 +122,8 @@
     seenTimers.forEach(clearTimeout); seenTimers.clear();
     seenObserver = new IntersectionObserver((entries) => {
       for (const e of entries) {
-        const id = e.target.dataset.id, row = e.target.closest("section.row")?.dataset.row;
+        const id = e.target.dataset.id, shown = e.target.closest("section.row")?.dataset.row;
+        const row = shown === "because" ? becauseKey : shown;
         if (e.isIntersecting) {
           if (!seenTimers.has(e.target)) seenTimers.set(e.target, setTimeout(() => {
             seenTimers.delete(e.target);
@@ -329,11 +333,11 @@
       const years = d ? (Date.now() - new Date(d + "T12:00:00").getTime()) / (365.25 * 86400000) : fadeYears;
       return Math.max(recency(t).score, 100 * Math.max(0, 1 - years / fadeYears));
     };
-    const ranked = (items) => sinkDisliked(rotate(items.map((t) => ({ t, s: (1 - w) * pickScore(t, taste) + w * newness(t) }))
-      .sort((a, b) => b.s - a.s).map((x) => x.t), "because"));
+    const ranked = (items, key) => { becauseKey = key; return sinkDisliked(rotate(items.map((t) => ({ t, s: (1 - w) * pickScore(t, taste) + w * newness(t) }))
+      .sort((a, b) => b.s - a.s).map((x) => x.t), key)); };
     if (!ok.length) {
       const pool = [...new Map(seeds.flatMap((id) => similarTo(id)).map((t) => [t.id, t])).values()];
-      return pool.length >= POOL_MIN ? { title: "Based on your favorites", items: ranked(pool) } : null;
+      return pool.length >= POOL_MIN ? { title: "Based on your favorites", items: ranked(pool, "because:favorites") } : null;
     }
     let pick = load(STORE.because, {});
     if (pick.day !== today() || !ok.includes(pick.id)) { // a new day: the next title in line
@@ -344,7 +348,7 @@
     }
     const name = feed.titles[pick.id]?.title || thumbs[pick.id]?.title || watchlist[pick.id]?.title;
     // never say "liked" about a title you've only saved
-    return { title: liked.includes(pick.id) ? `Because you liked ${name}` : `More like ${name}`, items: ranked(similarTo(pick.id)) };
+    return { title: liked.includes(pick.id) ? `Because you liked ${name}` : `More like ${name}`, items: ranked(similarTo(pick.id), `because:${pick.id}`) };
   }
 
 
@@ -1671,7 +1675,7 @@
         <p><b>Genre rows</b> like "Crime picks for you" come from genres you 👍 in <b>Genres</b> (or, without any, from titles you've liked), ordered by your match score like Top Picks. You get one or two, different genres each day. Very broad genres like Drama are skipped when you like others.</p>
         <p><b>Hidden gems:</b> the 10th spot in Top Picks (and every 10th from #30 in "See all") holds a title critics and audiences rate very highly that isn't trending or widely watched, to mix things up. Never from a genre you 👎. Once you've seen one for a couple of days, another takes its place.</p>`],
       ["Keeping rows fresh", `
-        <p>Titles you keep scrolling past make room for others. Each row keeps its own count: from the 3rd day you see a title in a row, it moves 5 places down that row each day, so the first few titles change every couple of days. It only moves in rows where you've seen it, so each row keeps its own ranking until you look at it. After 2 weeks out of sight in that row, it's back in its usual spot. Every title moves along, including ones you've liked or saved (they're always in Your library). Your library and the Netflix Top 10 aren't affected.</p>`],
+        <p>Titles you keep scrolling past make room for others. Each row keeps its own count (and "Because you liked…" keeps one for each title it's about): from the 3rd day you see a title in a row, it moves 5 places down that row each day, so the first few titles change every couple of days. It only moves in rows where you've seen it, so each row keeps its own ranking until you look at it. After 2 weeks out of sight in that row, it's back in its usual spot. Every title moves along, including ones you've liked or saved (they're always in Your library). Your library and the Netflix Top 10 aren't affected.</p>`],
       ["Signal: Your taste", `
         <p>Built from your 👍/👎 on titles and your 👍/👎 on genres in <b>Genres</b>. Starts at 50 (neutral). Each 👍 on a title raises its genres, common ones less (Drama about a quarter as much as a rare genre), so one liked drama doesn't fill Top Picks with dramas. A 👎 (Not for me) on a title doesn't lower its genres, since it's usually about that title, not the whole genre; use <b>Genres</b> for that. A genre you set in <b>Genres</b> counts like two title thumbs. Titles TMDB lists as similar to ones you liked get a boost, and similar to ones you marked Not for me a drop.</p>
         <p>Not counted until you rate something or pick a genre.</p>
