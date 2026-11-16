@@ -927,7 +927,7 @@
     return k;
   }
 
-  /* Cast: top-billed actors (up to 8) with photo, name and character, scrolling sideways.
+  /* Cast: top-billed actors (up to 8): rounded photo, then name and character left-aligned, scrolling sideways.
      No photo: their initials in a plain circle. */
   function castHtml(t) {
     if (!t.cast?.length) return "";
