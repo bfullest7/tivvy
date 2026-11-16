@@ -2202,13 +2202,23 @@
       feed = await fetchFeed();
     } catch {
       $("#rows").innerHTML = `<div class="notice"><b>No data yet.</b><br>The refresh job hasn't produced any results. Once it has run on GitHub, reload this page.</div>`;
+      firstScreenDone();
       return;
     }
     myServices = myServices.filter((k) => svcInfo(k));
     refreshSaved();
     tidySeen();
     render();
+    // The launch screen waits for the posters on the first screen (see revealWhenReady)
+    requestAnimationFrame(() => {
+      const h = innerHeight;
+      const onScreen = [...document.querySelectorAll("#rows .scroller")].filter((s) => { const r = s.getBoundingClientRect(); return r.top < h && r.bottom > 0; });
+      const posters = onScreen.flatMap((s) => [...s.querySelectorAll(":scope > .card .poster img")].slice(0, ROW_GROUP));
+      Promise.all(posters.map(whenLoaded)).then(firstScreenDone);
+    });
   }
+  let firstScreenDone;
+  const firstScreenReady = new Promise((done) => (firstScreenDone = done));
 
   /* iPhone home-screen apps: on a fresh launch iOS can add the status-bar
    * space twice (the header sits too low) until its next layout pass, which
@@ -2231,9 +2241,10 @@
     // (The launch screen is sized to the phone's screen, not the page, so iOS fixing the
     // page height late, sometimes after a second, no longer moves it; see index.html.)
     // If it never holds still by 1.6 seconds, skip the logo and just reveal the app. The
-    // app fades in 0.75 seconds after the logo appears.
+    // app fades in 0.75 seconds after the logo appears, or, if the posters on the first
+    // screen haven't downloaded yet, as soon as they have (at most 1 second more).
     const splash = document.getElementById("splash"), svg = splash?.querySelector("svg");
-    if (!svg) { setTimeout(revealApp, 1150); return; }
+    if (!svg) { setTimeout(revealWhenReady, 1150); return; }
     const start = performance.now();
     let last = null, still = 0;
     const check = () => {
@@ -2245,11 +2256,16 @@
       last = spot;
       if (t >= 400 && still >= 8) {
         splash.classList.add("ready");
-        setTimeout(revealApp, 750);
-      } else if (t >= 1600) revealApp(); // never settled: go straight to the app
+        setTimeout(revealWhenReady, 750);
+      } else if (t >= 1600) revealWhenReady(); // never settled: skip the logo
       else requestAnimationFrame(check);
     };
     requestAnimationFrame(check);
+  }
+  // Reveal the app once the first screen's posters are ready, so you land on a complete screen;
+  // never wait more than 1 second for them (late posters fade in as usual).
+  function revealWhenReady() {
+    Promise.race([firstScreenReady, new Promise((done) => setTimeout(done, 1000))]).then(revealApp);
   }
   // fade the logo out and the app in (home-screen launch only)
   function revealApp() {
@@ -2263,7 +2279,7 @@
     root.classList.remove("settling");
   }
   // safety net: never stay hidden, even if "load" doesn't fire as expected
-  setTimeout(revealApp, 2500);
+  setTimeout(revealApp, 3500);
   window.addEventListener("load", settleSoon);
   window.addEventListener("pageshow", (e) => { if (e.persisted) settleSoon(); });
 
