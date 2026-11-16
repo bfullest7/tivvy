@@ -200,6 +200,9 @@ class PipelineTest(unittest.TestCase):
         cast02 = json.loads((self.tmp / "data" / "cast" / "02.json").read_text())
         self.assertNotIn("t2", cast02)
         self.assertEqual((T["m1"].get("has_cast"), T["t2"].get("has_cast")), (1, None))
+        # ...instead a short line of names (in feed.json, so it shows at once)
+        self.assertEqual(T["t2"]["cast_list"], [["Bo Host", ""], ["Ann Lead", "Jo"], ["Cy Mom", "Mother of Jo"]])
+        self.assertNotIn("cast_list", T["m1"])
         self.assertEqual(len(list((self.tmp / "data" / "cast").glob("*.json"))), 100)
         for f in bf.NOT_FOR_PHONES:  # not in the file every phone downloads
             self.assertNotIn(f, T["m1"])

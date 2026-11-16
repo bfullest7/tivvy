@@ -236,12 +236,23 @@ def clean_role(role: str | None) -> str:
 CAST_MIN_PHOTOS = 3
 
 
+CAST_LIST_MAX = 6
+
+
 def shown_cast(cast: list | None) -> list | None:
-    """The cast as shown: roles tidied; none at all when fewer than 3 people have a photo
-    (mostly documentaries about real people, whose cast would be rows of initials)."""
+    """The photo-tile cast (roles tidied), when at least 3 people have a photo."""
     if not cast or sum(1 for p in cast if p[2]) < CAST_MIN_PHOTOS:
         return None
     return [[name, clean_role(role), photo] for name, role, photo in cast]
+
+
+def cast_list(cast: list | None) -> list | None:
+    """With fewer than 3 photos (mostly documentaries about real people), the cast is a short
+    line of names instead of tiles: [[name, role], ...], up to 6. Small, so it goes in feed.json
+    and shows instantly."""
+    if not cast or shown_cast(cast):
+        return None
+    return [[name, clean_role(role)] for name, role, _ in cast[:CAST_LIST_MAX]]
 
 
 # Kept in the cache for checking, but not sent to phones: cast goes in its own small files
@@ -259,9 +270,26 @@ def cast_for_titles(titles: dict, details_cache: dict) -> dict:
     """Each title's cast as shown (see shown_cast), from this run's details or the cache."""
     out = {}
     for k, d in titles.items():
-        cast = shown_cast(d["cast"] if "cast" in d else (details_cache.get(k) or {}).get("cast"))
+        cast = shown_cast(raw_cast(k, d, details_cache))
         if cast:
             out[k] = cast
+    return out
+
+
+def raw_cast(k: str, d: dict, details_cache: dict) -> list | None:
+    return d["cast"] if "cast" in d else (details_cache.get(k) or {}).get("cast")
+
+
+def phone_title(k: str, d: dict, cast_for: dict, details_cache: dict) -> dict:
+    """A title as sent to phones: without the fields they don't need, saying whether it has photo
+    tiles ("has_cast", loaded from data/cast/) or a short line of names ("cast_list")."""
+    out = {f: v for f, v in d.items() if f not in NOT_FOR_PHONES and f not in ("has_cast", "cast_list")}
+    if k in cast_for:
+        out["has_cast"] = 1
+    else:
+        names = cast_list(raw_cast(k, d, details_cache))
+        if names:
+            out["cast_list"] = names
     return out
 
 
@@ -1095,9 +1123,8 @@ def run(mode: str = "auto") -> dict:
         "services": [{k: s[k] for k in ("key", "name", "color")} for s in cfg["services"]],
         "weights": cfg["weights"],
         "row_length": cfg["ranking"]["row_length"],
-        "cast_flags": 1,  # titles with a Cast section say so ("has_cast"), so others show no placeholder
-        "titles": {k: {**{f: v for f, v in d.items() if f not in NOT_FOR_PHONES and f != "has_cast"}, **({"has_cast": 1} if k in cast_for else {})}
-                   for k, d in titles.items()},
+        "cast_flags": 1,  # titles with photo tiles say so ("has_cast"), so others show no placeholder
+        "titles": {k: phone_title(k, d, cast_for, details_cache) for k, d in titles.items()},
         "rows": build_rows(titles, netflix_rows, cfg),
     }
 

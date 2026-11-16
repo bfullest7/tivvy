@@ -964,6 +964,7 @@
   }
   function castSection(t) {
     if (t.cast) return castHtml(t.cast); // data from before cast moved to its own files
+    if (t.cast_list) return castLineHtml(t.cast_list);
     if (feed.cast_flags && !t.has_cast) return ""; // no Cast section for this title: no placeholder either
     const file = castFile(t.id);
     if (file.data && castShown.has(t.id)) return castHtml(file.data[t.id]);
@@ -985,6 +986,11 @@
     });
     const tile = `<div class="cast-card"><div class="cast-photo"></div><div class="skel-line"></div><div class="skel-line short"></div></div>`;
     return `<section class="cast is-loading" data-cast-for="${esc(t.id)}" aria-hidden="true"><h3>Cast</h3><div class="cast-scroll">${tile.repeat(4)}</div></section>`;
+  }
+  // Fewer than 3 photos (mostly documentaries about real people): a line of names, roles in brackets
+  function castLineHtml(list) {
+    const items = list.map(([name, role]) => `<span class="cast-person">${esc(name)}</span>${role ? ` <span class="cast-line-role">(${esc(role)})</span>` : ""}`);
+    return `<section class="cast"><h3>Cast</h3><p class="cast-line">${items.join(", ")}</p></section>`;
   }
   function castHtml(cast, fadeIn = false) {
     if (!cast?.length) return "";
