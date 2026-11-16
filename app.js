@@ -949,17 +949,24 @@
     if (t.cast) return castHtml(t.cast); // data from before cast moved to its own files
     const file = castFile(t.id);
     if (file.data) return castHtml(file.data[t.id]);
+    // Not loaded yet: the heading and grey tiles hold the space, so nothing jumps; the names and
+    // photos fade in when the file arrives (usually before you notice: loading starts when you
+    // touch a poster). No cast for this title (rare): the placeholder fades away.
     file.promise.then((data) => {
       const el = document.querySelector(`#details [data-cast-for="${CSS.escape(t.id)}"]`);
-      if (el) el.outerHTML = castHtml(data[t.id]);
+      if (!el) return;
+      if (data[t.id]?.length) { el.outerHTML = castHtml(data[t.id], true); return; }
+      el.classList.add("is-gone");
+      setTimeout(() => el.remove(), 150);
     });
-    return `<section class="cast" data-cast-for="${esc(t.id)}" hidden></section>`;
+    const tile = `<div class="cast-card"><div class="cast-photo"></div><div class="skel-line"></div><div class="skel-line short"></div></div>`;
+    return `<section class="cast is-loading" data-cast-for="${esc(t.id)}" aria-hidden="true"><h3>Cast</h3><div class="cast-scroll">${tile.repeat(4)}</div></section>`;
   }
-  function castHtml(cast) {
+  function castHtml(cast, fadeIn = false) {
     if (!cast?.length) return "";
     const initials = (n) => n.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     return `
-      <section class="cast">
+      <section class="cast${fadeIn ? " fade-in" : ""}">
         <h3>Cast</h3>
         <div class="cast-scroll">${cast.map(([name, role, photo]) => `
           <div class="cast-card">
@@ -1930,6 +1937,11 @@
       save(STORE.kind, kind);
       renderInPlace();
     });
+    // Start loading a title's cast as soon as a finger touches its poster, before the tap opens it
+    document.addEventListener("pointerdown", (e) => {
+      const id = e.target.closest?.("[data-id]")?.dataset.id;
+      if (id && feed?.titles?.[id] && !feed.titles[id].cast) castFile(id);
+    }, { passive: true, capture: true });
     $("#rows").addEventListener("click", (e) => {
       const setBtn = e.target.closest("[data-open-settings]");
       if (setBtn) return openSettings(setBtn.dataset.openSettings === "welcome");
