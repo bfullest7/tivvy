@@ -204,6 +204,25 @@ def shorten_overview(text: str, limit: int = 450) -> str:
     return text[:limit - 3].rsplit(" ", 1)[0] + "…"
 
 
+SELF_ROLES = {"self", "himself", "herself", "themselves", "narrator", "host"}
+
+
+def top_cast(d: dict, kind: str, limit: int = 8) -> list:
+    """Top-billed actors for the title screen: [name, character, photo path]. Shows use the
+    whole series' cast (aggregate_credits). Roles like "Self" (documentaries) are left blank,
+    and "(voice)" notes dropped."""
+    raw = (d.get("credits") or {}).get("cast") if kind == "movie" else (d.get("aggregate_credits") or {}).get("cast")
+    out = []
+    for c in sorted(raw or [], key=lambda c: c.get("order", 999))[:limit]:
+        role = c.get("character") if kind == "movie" else ((c.get("roles") or [{}])[0].get("character"))
+        role = re.sub(r"\s*\((?:voice|uncredited)\)", "", role or "", flags=re.I).strip()
+        if role.lower() in SELF_ROLES:
+            role = ""
+        if c.get("name"):
+            out.append([c["name"], role[:40], c.get("profile_path")])
+    return out
+
+
 def clamp(x, lo=0.0, hi=100.0):
     return max(lo, min(hi, x))
 
@@ -275,7 +294,8 @@ class Tmdb:
 
     def details(self, kind: str, tmdb_id: int, provider_to_service: dict[int, str]) -> dict | None:
         try:
-            d = self.get(f"/{kind}/{tmdb_id}", append_to_response="external_ids,watch/providers,recommendations,similar,keywords,videos",
+            d = self.get(f"/{kind}/{tmdb_id}", append_to_response="external_ids,watch/providers,recommendations,similar,keywords,videos,"
+                         + ("credits" if kind == "movie" else "aggregate_credits"),
                          include_video_language="en,null")
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -308,6 +328,7 @@ class Tmdb:
             runtime = None
             season_count = len(seasons) or None
         overview = shorten_overview(d.get("overview") or "")
+        cast = top_cast(d, kind)
         rec_ids = [r["id"] for r in (d.get("recommendations") or {}).get("results", [])]
         recs = [key_for(kind, i) for i in rec_ids[:12]]  # "Your taste": boosts titles like the ones you liked
         # For "Because you liked…" rows: all of TMDB's recommendations, then its similar titles
@@ -330,6 +351,7 @@ class Tmdb:
             "popularity": round(d.get("popularity") or 0, 2),
             "recs": recs,
             "more": more,
+            "cast": cast or None,  # [[name, character, photo path], ...], top billed first
             "trailer": pick_trailer((d.get("videos") or {}).get("results", [])),  # YouTube video id, or None
             "sports_keywords": sport_kw[:4] or None,  # why it was tagged Sports, for checking
             "link": wp.get("link") or f"https://www.themoviedb.org/{kind}/{tmdb_id}/watch?locale={self.region}",

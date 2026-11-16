@@ -145,6 +145,12 @@ class FakeHttp:
                 {"site": "YouTube", "type": "Trailer", "official": True, "key": "old1", "iso_639_1": "en", "published_at": "2024-01-15"},
                 {"site": "YouTube", "type": "Trailer", "official": True, "key": "main1", "iso_639_1": "en", "published_at": "2024-02-01"},
                 {"site": "Vimeo", "type": "Trailer", "official": True, "key": "vimeo1", "iso_639_1": "en", "published_at": "2024-02-02"}]}
+        people = [{"name": "Ann Lead", "order": 1, "profile_path": "/ann.jpg", "char": "Jo (voice)"},
+                  {"name": "Bo Host", "order": 0, "profile_path": None, "char": "Self"}]
+        if kind == "movie":
+            d["credits"] = {"cast": [{**{k: v for k, v in p.items() if k != "char"}, "character": p["char"]} for p in people]}
+        else:
+            d["aggregate_credits"] = {"cast": [{**{k: v for k, v in p.items() if k != "char"}, "roles": [{"character": p["char"]}]} for p in people]}
         kws = [{"name": k} for k in f.get("keywords", [])]
         d["keywords"] = {"keywords": kws} if kind == "movie" else {"results": kws}
         if kind == "movie":
@@ -179,6 +185,9 @@ class PipelineTest(unittest.TestCase):
         self.assertNotIn(582, feed["provider_ids"]["paramount"])
         self.assertEqual(T["m3"]["services"], ["netflix"])
         self.assertEqual(T["m1"]["trailer"], "main1")  # newest official YouTube trailer
+        # top-billed cast first; "Self" roles blank, "(voice)" dropped; shows use the whole series' cast
+        self.assertEqual(T["m1"]["cast"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
+        self.assertEqual(T["t1"]["cast"], [["Bo Host", "", None], ["Ann Lead", "Jo", "/ann.jpg"]])
         self.assertIsNone(T["t2"]["trailer"])  # none listed: no button in the app
         # similar titles: recommendations first, then TMDB similar, no repeats, only titles in the app, never itself
         self.assertEqual(T["t2"]["more"], ["t1", "t3"])

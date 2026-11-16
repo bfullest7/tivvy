@@ -840,6 +840,7 @@
         <button class="thumb up" data-thumb="1" aria-pressed="${thumb > 0}">👍 Like</button>
         <button class="thumb down" data-thumb="-1" aria-pressed="${thumb < 0}">👎 Not for me</button>
       </div>
+      ${t.gone ? "" : castHtml(t)}
       ${t.gone ? "" : whyThisPick(t)}`;
     const newTitle = $("#details").dataset.id !== id;
     $("#details").dataset.id = id;
@@ -924,6 +925,24 @@
       return "not matching your ratings";
     }
     return k;
+  }
+
+  /* Cast: top-billed actors (up to 8) with photo, name and character, scrolling sideways.
+     No photo: their initials in a plain circle. */
+  function castHtml(t) {
+    if (!t.cast?.length) return "";
+    const initials = (n) => n.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+    return `
+      <section class="cast">
+        <h3>Cast</h3>
+        <div class="cast-scroll">${t.cast.map(([name, role, photo]) => `
+          <div class="cast-card">
+            ${photo ? `<img class="cast-photo" loading="lazy" src="${IMG}w185${esc(photo)}" alt="">` : `<div class="cast-photo no-photo">${esc(initials(name))}</div>`}
+            <div class="cast-name">${esc(name)}</div>
+            ${role ? `<div class="cast-role">${esc(role)}</div>` : ""}
+          </div>`).join("")}
+        </div>
+      </section>`;
   }
 
   function whyThisPick(t) {
