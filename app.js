@@ -2381,6 +2381,7 @@
       last = spot;
       if (t >= 400 && still >= 8) {
         splash.classList.add("ready");
+        lt("logo shown");
         setTimeout(revealWhenReady, 750);
       } else if (t >= 1600) revealWhenReady(); // never settled: skip the logo
       else requestAnimationFrame(check);
@@ -2415,7 +2416,12 @@
   }
   // safety net: never stay hidden, even if "load" doesn't fire as expected
   setTimeout(revealApp, 3500);
-  window.addEventListener("load", settleSoon);
+  // Start as soon as the page is ready, not on "load": "load" also waits for the first-screen
+  // posters (they download straight away), which held the logo back on the white screen.
+  let settleStarted = false;
+  const settleOnce = () => { if (!settleStarted) { settleStarted = true; settleSoon(); } };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", settleOnce);
+  else settleOnce();
   window.addEventListener("pageshow", (e) => { if (e.persisted) settleSoon(); });
 
   // background helper (sw.js): always open the newest version of the app
