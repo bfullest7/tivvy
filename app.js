@@ -2222,8 +2222,18 @@
       return data;
     } catch { return null; }
   }
-  async function downloadFeed() {
-    const res = await fetch("data/feed.json", { cache: "no-cache" });
+  // ifChanged: ask the server whether the data changed since the saved copy (by its version tag);
+  // if not, nothing is downloaded and this returns null.
+  async function downloadFeed(ifChanged = false) {
+    const headers = {};
+    if (ifChanged) {
+      const saved = await savedCopy("feed");
+      const tag = saved?.headers.get("etag"), modified = saved?.headers.get("last-modified");
+      if (tag) headers["If-None-Match"] = tag;
+      else if (modified) headers["If-Modified-Since"] = modified;
+    }
+    const res = await fetch("data/feed.json", Object.keys(headers).length ? { cache: "no-store", headers } : { cache: "no-cache" });
+    if (res.status === 304) { lt("data checked: unchanged, nothing downloaded"); return null; }
     if (!res.ok) throw new Error(res.status);
     await saveCopy("feed", res);
     const data = await res.json();
@@ -2250,7 +2260,8 @@
   // Check for newer data in the background; never redraw what you're looking at
   async function checkForNewData() {
     try {
-      const next = await downloadFeed();
+      const next = await downloadFeed(true);
+      if (!next) return;
       const have = pendingFeed || feed;
       if (have && next.generated_at <= have.generated_at) return;
       if (launchScreenShowing()) {
@@ -2306,7 +2317,9 @@
     render();
     lt("home screen drawn");
     trackFirstScreen();
-    if (fromSaved) checkForNewData();
+    // Check for newer data once the first screen's posters are in (at most 1.5 seconds), so the
+    // check doesn't slow them down
+    if (fromSaved) Promise.race([firstScreen.ready, new Promise((done) => setTimeout(done, 1500))]).then(() => { lt("checking for newer data"); checkForNewData(); });
   }
   /* The launch screen waits for the posters on the first screen (see revealWhenReady). If newer
      data is switched in behind it, it waits for the new first screen's posters instead. */
