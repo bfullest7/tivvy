@@ -27,8 +27,8 @@ The data build runs every 2 hours on GitHub and writes `data/feed.json`, which e
 The daily lookup limits reset at midnight UTC (7 PM Eastern in winter). A big batch of new titles (like adding a new list) takes a day or so to get all its critic scores; normally new titles get them within 2 hours.
 
 **On the phone.**
-- **The data:** the app checks for new data each time it's opened or brought back to the screen, and redraws only if the data changed.
-- **The settings:** `config.json` (weights, rotation and so on) is read when the app starts and whenever new data arrives, so a change applies the next time the app opens or within about 2 hours, whichever comes first. No "Update available" banner.
+- **The data:** the app opens with the newest data already saved on the phone (so a launch never waits for the download) and checks for newer data in the background each time it's opened or brought back. Newer data is used behind the launch screen if it arrives while that's still showing; otherwise it's kept and used the next time you come back after 2 minutes or more (when the home screen starts fresh anyway), with a quick fade. The rows never change while you're looking at them. So right after a refresh you may see the previous data (up to one refresh behind) until your next visit. The very first launch, with nothing saved, waits for the download.
+- **The settings:** `config.json` (weights, rotation and so on) is saved on the phone with the data and checked along with it, so a change applies along with the next data the app switches to (see above), at most a visit or two later. No "Update available" banner.
 - **The app itself:** a new version shows the "Update available" banner. Without tapping Refresh, it updates on its own within about 10 minutes, or the next time the app starts fresh.
 - **Your choices** (likes, Not for me, watched, watchlist, genres, services) are saved on the phone instantly and never leave it, except in a backup file.
 

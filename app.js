@@ -2146,14 +2146,14 @@
         hiddenAt = Date.now();
         return;
       }
-      if (hiddenAt && Date.now() - hiddenAt >= RESET_AFTER_MS) goHome();
+      if (hiddenAt && Date.now() - hiddenAt >= RESET_AFTER_MS) { goHome(); useNewDataOnReturn(); }
       hiddenAt = null;
       if (homeStale && !document.querySelector("dialog[open]")) render(true);
-      refresh();
+      checkForNewData(); // newer data is kept for the next time you come back
       checkForUpdate();
     });
     window.addEventListener("pageshow", (e) => {
-      if (e.persisted) goHome(); // restored from the browser's back/forward cache
+      if (e.persisted) { goHome(); useNewDataOnReturn(); } // restored from the browser's back/forward cache
     });
     setInterval(renderUpdated, 60000);
     setInterval(checkForUpdate, 30 * 60000);
@@ -2188,35 +2188,92 @@
   }
 
   // ---------------------------------------------------------------- start
-  async function fetchFeed() {
+  /* Data: the app opens with the newest data already saved on the phone (so a launch never
+     waits for the download), and checks for newer data in the background. Newer data is used:
+     behind the launch screen if it arrives while that's still showing, or else the next time
+     you come back after 2 minutes or more (when the home screen starts fresh anyway), with a
+     quick fade. Never while you're looking at the screen. The very first launch, with nothing
+     saved yet, waits for the download. */
+  const DATA_CACHE = "tivvy-data";
+  let pendingFeed = null; // newer data downloaded while you were looking: used next time you come back
+  async function savedCopy(key) {
+    try { return await (await caches.open(DATA_CACHE)).match(key); } catch { return null; }
+  }
+  async function saveCopy(key, res) {
+    try { await (await caches.open(DATA_CACHE)).put(key, res.clone()); } catch { /* no saved copy: next launch downloads */ }
+  }
+  // Weights come from config.json when available, so a change there takes effect without
+  // waiting for the next data refresh (a saved copy is used at launch, the new one next time).
+  function withConfig(data, cfg) {
+    if (cfg && cfg.weights) data.weights = cfg.weights;
+    if (cfg && cfg.row_tilt) data.row_tilt = cfg.row_tilt;
+    if (cfg?.ranking?.row_length) data.row_length = cfg.ranking.row_length;
+    if (cfg && cfg.rotation) data.rotation = cfg.rotation;
+    return data;
+  }
+  async function loadSavedFeed() {
+    const res = await savedCopy("feed");
+    if (!res) return null;
+    try {
+      const data = await res.json();
+      const cfg = await savedCopy("config");
+      if (cfg) withConfig(data, await cfg.json().catch(() => null));
+      lt(`saved data opened (from ${new Date(data.generated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})`);
+      return data;
+    } catch { return null; }
+  }
+  async function downloadFeed() {
     const res = await fetch("data/feed.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(res.status);
+    await saveCopy("feed", res);
     const data = await res.json();
     if (launchTiming.rows.length < 30) {
       const e = performance.getEntriesByType("resource").filter((x) => x.name.includes("data/feed.json")).pop();
-      lt(`data ready (${e ? `${(e.transferSize / 1e6).toFixed(2)} MB downloaded${e.transferSize < 1000 ? ": unchanged, reused" : ""}, took ${(e.duration / 1000).toFixed(2)}s` : "no details"})`);
+      lt(`data downloaded (${e ? `${(e.transferSize / 1e6).toFixed(2)} MB${e.transferSize < 1000 ? ", unchanged" : ""}, took ${(e.duration / 1000).toFixed(2)}s` : "no details"})`);
     }
-    // Weights come from config.json when available, so a change there takes
-    // effect as soon as it's published (not only after the next data refresh).
     try {
-      const cfg = await (await fetch("config.json", { cache: "no-cache" })).json();
-      if (cfg && cfg.weights) data.weights = cfg.weights;
-      if (cfg && cfg.row_tilt) data.row_tilt = cfg.row_tilt;
-      if (cfg?.ranking?.row_length) data.row_length = cfg.ranking.row_length;
-      if (cfg && cfg.rotation) data.rotation = cfg.rotation;
-    } catch { /* keep the weights saved with the data */ }
+      const cfg = await fetch("config.json", { cache: "no-cache" });
+      if (cfg.ok) { await saveCopy("config", cfg); withConfig(data, await cfg.json()); }
+    } catch {
+      const saved = await savedCopy("config");
+      if (saved) withConfig(data, await saved.json().catch(() => null));
+    }
     return data;
   }
-
-  async function refresh() {
+  const launchScreenShowing = () => document.documentElement.classList.contains("settling");
+  function useFeed(next) {
+    feed = next;
+    pendingFeed = null;
+    refreshSaved();
+    render();
+  }
+  // Check for newer data in the background; never redraw what you're looking at
+  async function checkForNewData() {
     try {
-      const next = await fetchFeed();
-      if (!feed || next.generated_at !== feed.generated_at) {
-        feed = next;
-        refreshSaved();
-        render(true);
+      const next = await downloadFeed();
+      const have = pendingFeed || feed;
+      if (have && next.generated_at <= have.generated_at) return;
+      if (launchScreenShowing()) {
+        useFeed(next); // behind the launch screen: unseen
+        lt("newer data arrived: switched behind the launch screen");
+        trackFirstScreen();
+      } else {
+        pendingFeed = next;
+        lt("newer data arrived after the launch screen: kept for next time");
       }
-    } catch { /* keep showing what we have */ }
+    } catch { /* offline: keep what we have */ }
+  }
+  // Back after 2 minutes or more: the home screen starts fresh, with newer data if there is some
+  function useNewDataOnReturn() {
+    if (!pendingFeed) return;
+    const rows = $("#rows");
+    rows.style.transition = "none";
+    rows.style.opacity = "0";
+    useFeed(pendingFeed);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      rows.style.transition = "opacity .15s ease";
+      rows.style.opacity = "";
+    }));
   }
 
   async function start() {
@@ -2232,31 +2289,48 @@
     filter = load(STORE.filter, "all");
     kind = ["all", "tv", "movie"].includes(load(STORE.kind, "all")) ? load(STORE.kind, "all") : "all";
     wire();
-    try {
-      feed = await fetchFeed();
-    } catch {
-      $("#rows").innerHTML = `<div class="notice"><b>No data yet.</b><br>The refresh job hasn't produced any results. Once it has run on GitHub, reload this page.</div>`;
-      firstScreenDone();
-      return;
+    feed = await loadSavedFeed();
+    const fromSaved = !!feed;
+    if (!feed) {
+      try {
+        feed = await downloadFeed(); // first launch (nothing saved yet): wait for the download
+      } catch {
+        $("#rows").innerHTML = `<div class="notice"><b>No data yet.</b><br>The refresh job hasn't produced any results. Once it has run on GitHub, reload this page.</div>`;
+        firstScreen.done();
+        return;
+      }
     }
     myServices = myServices.filter((k) => svcInfo(k));
     refreshSaved();
     tidySeen();
     render();
     lt("home screen drawn");
-    // The launch screen waits for the posters on the first screen (see revealWhenReady)
+    trackFirstScreen();
+    if (fromSaved) checkForNewData();
+  }
+  /* The launch screen waits for the posters on the first screen (see revealWhenReady). If newer
+     data is switched in behind it, it waits for the new first screen's posters instead. */
+  const firstScreen = { token: 0, resolved: false };
+  firstScreen.ready = new Promise((done) => (firstScreen.done = () => { firstScreen.resolved = true; done(); }));
+  function trackFirstScreen() {
+    if (firstScreen.resolved) {
+      firstScreen.resolved = false;
+      firstScreen.ready = new Promise((done) => (firstScreen.done = () => { firstScreen.resolved = true; done(); }));
+    }
+    const token = ++firstScreen.token;
     requestAnimationFrame(() => {
       const h = innerHeight;
       const onScreen = [...document.querySelectorAll("#rows .scroller")].filter((s) => { const r = s.getBoundingClientRect(); return r.top < h && r.bottom > 0; });
       const posters = onScreen.flatMap((s) => [...s.querySelectorAll(":scope > .card .poster img")].slice(0, ROW_GROUP));
-      const ready = posters.filter(loaded).length;
-      lt(`${posters.length} first-screen posters, ${ready} already on the phone`);
+      lt(`${posters.length} first-screen posters, ${posters.filter(loaded).length} already on the phone`);
       posters.forEach((img, i) => !loaded(img) && whenLoaded(img).then(() => lt(`poster ${i + 1} arrived${img.naturalWidth ? "" : " (failed)"}`)));
-      Promise.all(posters.map(whenLoaded)).then(() => { lt("all first-screen posters ready"); firstScreenDone(); });
+      Promise.all(posters.map(whenLoaded)).then(() => {
+        if (token !== firstScreen.token) return; // a newer first screen replaced this one
+        lt("all first-screen posters ready");
+        firstScreen.done();
+      });
     });
   }
-  let firstScreenDone;
-  const firstScreenReady = new Promise((done) => (firstScreenDone = done));
 
   /* iPhone home-screen apps: on a fresh launch iOS can add the status-bar
    * space twice (the header sits too low) until its next layout pass, which
@@ -2304,8 +2378,16 @@
   // never wait more than 1 second for them (late posters fade in as usual).
   function revealWhenReady() {
     lt("launch screen could go now (logo shown long enough)");
-    Promise.race([firstScreenReady.then(() => "posters ready"), new Promise((done) => setTimeout(() => done("stopped waiting after 1 second"), 1000))])
-      .then((why) => { lt(`launch screen goes: ${why}`); revealApp(); });
+    const giveUp = new Promise((done) => setTimeout(() => done("stopped waiting after 1 second"), 1000));
+    const wait = () => {
+      const ready = firstScreen.ready;
+      Promise.race([ready.then(() => "posters ready"), giveUp]).then((why) => {
+        if (why === "posters ready" && ready !== firstScreen.ready) return wait(); // newer data switched in: wait for its posters
+        lt(`launch screen goes: ${why}`);
+        revealApp();
+      });
+    };
+    wait();
   }
   // fade the logo out and the app in (home-screen launch only)
   function revealApp() {
