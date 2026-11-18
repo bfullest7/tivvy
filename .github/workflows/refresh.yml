@@ -84,7 +84,7 @@ jobs:
       # Size alarm: after publishing (so nothing is held back), fail the run if the file every
       # phone downloads has grown past the limit in config.json. GitHub then emails a
       # "workflow failed" notice; the data and app are already live.
-      - name: Check download size
+      - name: Check download size and services
         if: github.event_name != 'push'
         run: |
           python - <<'PY'
@@ -93,7 +93,18 @@ jobs:
           raw = open("data/feed.json", "rb").read()
           mb = len(gzip.compress(raw, 9)) / 1e6
           print(f"feed.json: {len(raw) / 1e6:.1f} MB, {mb:.2f} MB compressed (alarm at {limit} MB)")
+          failed = False
           if mb > limit:
               print(f"::error title=Data file too big::feed.json is {mb:.2f} MB compressed, over the {limit} MB limit. Ask Claude to find what grew and trim it.")
-              sys.exit(1)
+              failed = True
+          # service alarms from this run's morning rebuild (a service losing many titles, or
+          # Hulu and Disney+ suddenly sharing many more titles)
+          try:
+              alerts = json.load(open("data/cache/alerts.json"))
+          except Exception:
+              alerts = []
+          for a in alerts:
+              print(f"::error title=Streaming service change::{a} Ask Claude to check the services.")
+              failed = True
+          sys.exit(1 if failed else 0)
           PY

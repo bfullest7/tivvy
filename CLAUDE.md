@@ -22,6 +22,7 @@
 - On publish, the app version is a fingerprint of `index.html`, `app.js` and `styles.css`. It's stamped into the page and `version.json`, which drives the "Update available" banner.
 - New site files must be added to the workflow's "Collect site files" copy step.
 - **Keep the data download small.** `data/feed.json` is downloaded by every phone (1.7 MB compressed in mid-Nov 2026). Before adding a tracked list, a service or a new field per title, estimate how much it adds and tell Beth; put data only a title's screen needs in separate files (like `data/cast/`). The workflow's "Check download size" step fails the run (GitHub emails Beth) when it passes `feed_size_alarm_mb` in config.json (2.5); the data still publishes. If that email comes, find what grew and trim it.
+- **Service alarms.** After each morning rebuild, the same step fails the run (GitHub emails Beth; the data still publishes) if a service loses more than a third of its titles compared with its highest count in the last 7 rebuilds, or if Hulu and Disney+ suddenly share many more titles than before (213 in Nov 2026; the apps merge in Dec 2026). Each alert fires once. Settings: `service_alarm_drop`, `service_alarm_overlap` in config.json; state in `data/cache/service_check.json`. If one comes, check what changed in TMDB's provider data and adjust services.
 - Don't push while a manually started data refresh is still queued: a newer run cancels the pending one.
 
 ## iPhone home-screen quirks (already handled; be careful changing)

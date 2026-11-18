@@ -302,6 +302,46 @@ def write_cast_files(cast_for: dict) -> int:
     return sum(len(v) for v in shards.values())
 
 
+def check_services(titles: dict, state: dict, cfg: dict, day: str) -> list[str]:
+    """Service alarms, checked after each morning rebuild (results go to data/cache/alerts.json;
+    the workflow fails the run so GitHub emails Beth):
+    - a service has lost a large share of its titles compared with its highest count in the
+      last 7 rebuilds (e.g. Hulu titles moving to Disney+ after the apps merge);
+    - a pair of services (Hulu and Disney+) suddenly shares many more titles than before, so
+      many titles would show both badges.
+    `state` is kept between runs (data/cache/service_check.json) and updated in place."""
+    rf = cfg["refresh"]
+    drop = rf.get("service_alarm_drop", 0.33)
+    counts: dict[str, int] = {}
+    for t in titles.values():
+        for s in t["services"]:
+            counts[s] = counts.get(s, 0) + 1
+    names = {s["key"]: s["name"] for s in cfg["services"]}
+    alerts = []
+    history = [h for h in state.get("history", []) if h["date"] != day][-6:]
+    alerted = state.setdefault("drop_alerted", {})  # service -> count when last alerted (alert once)
+    for svc, n in counts.items():
+        peak = max([h["counts"].get(svc, 0) for h in history] + [0])
+        if svc in alerted and n >= alerted[svc] * (1 - drop):
+            if n >= peak * (1 - drop):
+                del alerted[svc]  # recovered: alert again next time
+            continue
+        if peak >= 100 and n < peak * (1 - drop):
+            alerts.append(f"{names.get(svc, svc)} has {n} titles, down from {peak} recently ({round(100 * (1 - n / peak))}% fewer).")
+            alerted[svc] = n
+    base = state.setdefault("overlap_baseline", {})
+    for a, b in rf.get("service_alarm_overlap", []):
+        key = f"{a}+{b}"
+        both = sum(1 for t in titles.values() if a in t["services"] and b in t["services"])
+        if key not in base:
+            base[key] = both
+        elif both >= base[key] * 1.5 and both - base[key] >= 100:
+            alerts.append(f"{both} titles are now on both {names.get(a, a)} and {names.get(b, b)} (was {base[key]}), so many titles show both badges.")
+            base[key] = both  # alert once; a further jump alerts again
+    state["history"] = history + [{"date": day, "counts": counts}]
+    return alerts
+
+
 def clamp(x, lo=0.0, hi=100.0):
     return max(lo, min(hi, x))
 
@@ -1129,6 +1169,14 @@ def run(mode: str = "auto") -> dict:
     }
 
     save_json(feed_path, feed, compact=True)
+    alerts = []
+    if mode == "full":
+        svc_state = load_json(CACHE / "service_check.json", {})
+        alerts = check_services(titles, svc_state, cfg, today().isoformat())
+        save_json(CACHE / "service_check.json", svc_state)
+        for a in alerts:
+            log(f"ALERT: {a}")
+    save_json(CACHE / "alerts.json", alerts)  # this run's alerts only; the workflow emails them
     log(f"cast files: {write_cast_files(cast_for)} titles with cast")
     if mode == "full":
         save_json(CACHE / "details.json", details, compact=True)

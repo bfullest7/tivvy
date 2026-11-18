@@ -325,6 +325,26 @@ class PipelineTest(unittest.TestCase):
         got = bf.services_added({"baseline": "2026-11-06", "seen": seen}, cfg)
         self.assertEqual((str(got["netflix"]), str(got["tubi"]), str(got["max"])), ("2026-11-06", "2026-11-12", TODAY))
 
+    def test_service_alarms(self):
+        cfg = {"refresh": {"service_alarm_overlap": [["hulu", "disney"]]},
+               "services": [{"key": "hulu", "name": "Hulu"}, {"key": "disney", "name": "Disney+"}]}
+        def titles(hulu_only, disney_only, both):
+            t = {}
+            for i in range(hulu_only): t[f"m{i}"] = {"services": ["hulu"]}
+            for i in range(disney_only): t[f"t{i}"] = {"services": ["disney"]}
+            for i in range(both): t[f"b{i}"] = {"services": ["hulu", "disney"]}
+            return t
+        state = {}
+        self.assertEqual(bf.check_services(titles(600, 500, 200), state, cfg, "2026-11-18"), [])  # first run: baseline
+        self.assertEqual(bf.check_services(titles(580, 510, 210), state, cfg, "2026-11-19"), [])  # normal wobble
+        # Hulu titles move under Disney+: Hulu drops by over a third, and far more titles are on both
+        alerts = bf.check_services(titles(100, 900, 420), state, cfg, "2026-11-20")
+        self.assertEqual(len(alerts), 2, alerts)
+        self.assertIn("Hulu has 520 titles, down from 800", alerts[0])
+        self.assertIn("420 titles are now on both Hulu and Disney+ (was 200)", alerts[1])
+        self.assertEqual(bf.check_services(titles(100, 900, 430), state, cfg, "2026-11-21"), [])  # each alert fires once
+        self.assertEqual(len(state["history"]), 4)
+
     def test_long_description_ends_at_a_full_sentence(self):
         short = bf.shorten_overview
         self.assertEqual(short("A short one."), "A short one.")
