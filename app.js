@@ -9,18 +9,7 @@
 
   const IMG = "https://image.tmdb.org/t/p/";
   const STORE = { services: "wtw.services", thumbs: "wtw.thumbs", genres: "wtw.genres", filter: "wtw.filter", kind: "wtw.kind", watched: "wtw.watched", seen: "wtw.seen", because: "wtw.because", watchlist: "wtw.watchlist", refreshedTo: "wtw.refreshedTo", lastBackup: "wtw.lastBackup" };
-  /* TEMPORARY launch timing log: when each step of a launch happens (seconds since the app
-     started opening), to find why posters still arrive after the launch screen. The last 3
-     launches are kept on the phone and shown at the bottom of Profile. */
-  const launchTiming = { at: new Date().toISOString(), rows: [] };
-  const lt = (what) => launchTiming.rows.push(`${(performance.now() / 1000).toFixed(2)}s  ${what}`);
-  lt("app code started");
-  setTimeout(() => {
-    try {
-      const all = JSON.parse(localStorage.getItem("wtw.launchTiming") || "[]");
-      localStorage.setItem("wtw.launchTiming", JSON.stringify([launchTiming, ...all].slice(0, 3)));
-    } catch {}
-  }, 6000);
+  try { localStorage.removeItem("wtw.launchTiming"); } catch {} // the temporary launch timing log is gone
   const BACKUP_APP = "what-to-watch";
   const RESET_AFTER_MS = 2 * 60 * 1000; // away this long -> reopen at the main screen
 
@@ -1702,23 +1691,6 @@
   }
 
   // ---------------------------------------------------------------- settings
-  // TEMPORARY: the launch timing log (see launchTiming) at the bottom of Profile
-  function renderLaunchTiming() {
-    let logs = [];
-    try { logs = JSON.parse(localStorage.getItem("wtw.launchTiming") || "[]"); } catch {}
-    let sec = $("#launch-timing");
-    if (!sec) {
-      sec = document.createElement("section");
-      sec.id = "launch-timing";
-      $("#settings .sheet-body").appendChild(sec);
-    }
-    const when = (iso) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    sec.innerHTML = `<h3>Launch timing (temporary)</h3>
-      <p style="color:var(--muted);font-size:14px">Close Tivvy fully, open it from the home screen, then screenshot this (newest first).</p>
-      ${logs.length ? logs.map((l) => `<p style="margin:12px 0 4px;font-size:13px"><b>${esc(when(l.at))}</b></p>
-        <pre style="white-space:pre-wrap;font-size:11px;line-height:1.4;margin:0;color:var(--muted)">${esc(l.rows.join("\n"))}</pre>`).join("")
-      : `<p style="font-size:14px">Nothing yet.</p>`}`;
-  }
   function openSettings(fromWelcome = false) {
     $("#s-intro").hidden = !fromWelcome; // first visit: one line saying services and genres are one step
     $("#service-picker").innerHTML = feed.services.map((s) => `
@@ -1729,7 +1701,6 @@
     renderWeights();
     showLastBackup();
     renderUpdated();
-    renderLaunchTiming();
     const s = $("#settings");
     if (!s.open) {
       showSheet(s);
@@ -2218,7 +2189,6 @@
       const data = await res.json();
       const cfg = await savedCopy("config");
       if (cfg) withConfig(data, await cfg.json().catch(() => null));
-      lt(`saved data opened (from ${new Date(data.generated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})`);
       return data;
     } catch { return null; }
   }
@@ -2233,14 +2203,10 @@
       else if (modified) headers["If-Modified-Since"] = modified;
     }
     const res = await fetch("data/feed.json", Object.keys(headers).length ? { cache: "no-store", headers } : { cache: "no-cache" });
-    if (res.status === 304) { lt("data checked: unchanged, nothing downloaded"); return null; }
+    if (res.status === 304) return null; // unchanged: nothing downloaded
     if (!res.ok) throw new Error(res.status);
     await saveCopy("feed", res);
     const data = await res.json();
-    if (launchTiming.rows.length < 30) {
-      const e = performance.getEntriesByType("resource").filter((x) => x.name.includes("data/feed.json")).pop();
-      lt(`data downloaded (${e ? `${(e.transferSize / 1e6).toFixed(2)} MB${e.transferSize < 1000 ? ", unchanged" : ""}, took ${(e.duration / 1000).toFixed(2)}s` : "no details"})`);
-    }
     try {
       const cfg = await fetch("config.json", { cache: "no-cache" });
       if (cfg.ok) { await saveCopy("config", cfg); withConfig(data, await cfg.json()); }
@@ -2266,11 +2232,9 @@
       if (have && next.generated_at <= have.generated_at) return;
       if (launchScreenShowing()) {
         useFeed(next); // behind the launch screen: unseen
-        lt("newer data arrived: switched behind the launch screen");
         trackFirstScreen();
       } else {
         pendingFeed = next;
-        lt("newer data arrived after the launch screen: kept for next time");
       }
     } catch { /* offline: keep what we have */ }
   }
@@ -2315,11 +2279,10 @@
     refreshSaved();
     tidySeen();
     render();
-    lt("home screen drawn");
     trackFirstScreen();
     // Check for newer data once the first screen's posters are in (at most 1.5 seconds), so the
     // check doesn't slow them down
-    if (fromSaved) Promise.race([firstScreen.ready, new Promise((done) => setTimeout(done, 1500))]).then(() => { lt("checking for newer data"); checkForNewData(); });
+    if (fromSaved) Promise.race([firstScreen.ready, new Promise((done) => setTimeout(done, 1500))]).then(checkForNewData);
   }
   /* The launch screen waits for the posters on the first screen (see revealWhenReady). If newer
      data is switched in behind it, it waits for the new first screen's posters instead. */
@@ -2335,11 +2298,8 @@
       const h = innerHeight;
       const onScreen = [...document.querySelectorAll("#rows .scroller")].filter((s) => { const r = s.getBoundingClientRect(); return r.top < h && r.bottom > 0; });
       const posters = onScreen.flatMap((s) => [...s.querySelectorAll(":scope > .card .poster img")].slice(0, ROW_GROUP));
-      lt(`${posters.length} first-screen posters, ${posters.filter(loaded).length} already on the phone`);
-      posters.forEach((img, i) => !loaded(img) && whenLoaded(img).then(() => lt(`poster ${i + 1} arrived${img.naturalWidth ? "" : " (failed)"}`)));
       Promise.all(posters.map(whenLoaded)).then(() => {
         if (token !== firstScreen.token) return; // a newer first screen replaced this one
-        lt("all first-screen posters ready");
         firstScreen.done();
       });
     });
@@ -2381,7 +2341,6 @@
       last = spot;
       if (t >= 400 && still >= 8) {
         splash.classList.add("ready");
-        lt("logo shown");
         setTimeout(revealWhenReady, 750);
       } else if (t >= 1600) revealWhenReady(); // never settled: skip the logo
       else requestAnimationFrame(check);
@@ -2391,13 +2350,11 @@
   // Reveal the app once the first screen's posters are ready, so you land on a complete screen;
   // never wait more than 1 second for them (late posters fade in as usual).
   function revealWhenReady() {
-    lt("launch screen could go now (logo shown long enough)");
     const giveUp = new Promise((done) => setTimeout(() => done("stopped waiting after 1 second"), 1000));
     const wait = () => {
       const ready = firstScreen.ready;
       Promise.race([ready.then(() => "posters ready"), giveUp]).then((why) => {
         if (why === "posters ready" && ready !== firstScreen.ready) return wait(); // newer data switched in: wait for its posters
-        lt(`launch screen goes: ${why}`);
         revealApp();
       });
     };
