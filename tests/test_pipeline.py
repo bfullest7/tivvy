@@ -340,10 +340,17 @@ class PipelineTest(unittest.TestCase):
         # Hulu titles move under Disney+: Hulu drops by over a third, and far more titles are on both
         alerts = bf.check_services(titles(100, 900, 420), state, cfg, "2026-11-20")
         self.assertEqual(len(alerts), 2, alerts)
-        self.assertIn("Hulu has 520 titles, down from 800", alerts[0])
-        self.assertIn("420 titles are now on both Hulu and Disney+ (was 200)", alerts[1])
-        self.assertEqual(bf.check_services(titles(100, 900, 430), state, cfg, "2026-11-21"), [])  # each alert fires once
-        self.assertEqual(len(state["history"]), 4)
+        self.assertIn("Hulu has 520 titles, down from 800 (since 2026-11-20)", alerts[0])
+        self.assertIn("420 titles are now on both Hulu and Disney+ (was 200, since 2026-11-20)", alerts[1])
+        # not dealt with: both repeat every morning, even after a week
+        for day in ("2026-11-21", "2026-11-25", "2026-11-30"):
+            self.assertEqual(len(bf.check_services(titles(100, 900, 430), state, cfg, day)), 2, day)
+        # marked as expected in config.json: they stop, and the new levels are normal from then on
+        cfg["refresh"]["service_alarm_accept"] = {"hulu": "2026-12-01", "hulu+disney": "2026-12-01"}
+        self.assertEqual(bf.check_services(titles(100, 900, 430), state, cfg, "2026-12-01"), [])
+        self.assertEqual(bf.check_services(titles(100, 900, 440), state, cfg, "2026-12-02"), [])
+        # a later, new drop alerts again
+        self.assertEqual(len(bf.check_services(titles(10, 900, 200), state, cfg, "2026-12-03")), 1)
 
     def test_long_description_ends_at_a_full_sentence(self):
         short = bf.shorten_overview
