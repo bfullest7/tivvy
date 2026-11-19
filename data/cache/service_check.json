@@ -1,0 +1,24 @@
+{
+ "drops": {},
+ "overlap_baseline": {
+  "hulu+disney": 215
+ },
+ "overlap_since": {},
+ "history": [
+  {
+   "date": "2026-11-19",
+   "counts": {
+    "prime": 1137,
+    "appletv": 290,
+    "disney": 715,
+    "netflix": 1178,
+    "starz": 441,
+    "tubi": 1087,
+    "peacock": 620,
+    "hbomax": 726,
+    "paramount": 695,
+    "hulu": 797
+   }
+  }
+ ]
+}
