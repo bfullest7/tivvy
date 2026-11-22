@@ -352,6 +352,16 @@ class PipelineTest(unittest.TestCase):
         # a later, new drop alerts again
         self.assertEqual(len(bf.check_services(titles(10, 900, 200), state, cfg, "2026-12-03")), 1)
 
+    def test_first_public_release_date(self):
+        rd = lambda *rows: {"results": [{"iso_3166_1": c, "release_dates": [{"type": ty, "release_date": f"{d}T00:00:00.000Z"}]} for c, ty, d in rows]}
+        # Hamilton: digital in 2020, back in US cinemas in 2025 (TMDB's main date)
+        self.assertEqual(bf.first_release("2025-09-05", rd(("US", 4, "2020-07-03"), ("US", 3, "2025-09-05"))), "2020-07-03")
+        # a festival premiere a year before the public release doesn't count
+        self.assertEqual(bf.first_release("2026-03-01", rd(("US", 1, "2025-01-20"), ("US", 4, "2026-03-01"))), "2026-03-01")
+        # future dates are ignored; no extra dates: the main date
+        self.assertEqual(bf.first_release("2026-03-01", rd(("GB", 3, "2027-01-01"))), "2026-03-01")
+        self.assertEqual(bf.first_release("2026-03-01", None), "2026-03-01")
+
     def test_long_description_ends_at_a_full_sentence(self):
         short = bf.shorten_overview
         self.assertEqual(short("A short one."), "A short one.")

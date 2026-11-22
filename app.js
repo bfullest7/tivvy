@@ -294,7 +294,21 @@
       .filter((t) => visible(t) && (t.imdb_votes || 0) >= min)
       .map((t) => ({ t, s: pickScore(t, taste) }))
       .sort((a, b) => b.s - a.s);
-    return sinkDisliked(rotate(ranked.map((x) => x.t), "picks"));
+    return newFirst(sinkDisliked(rotate(ranked.map((x) => x.t), "picks")));
+  }
+  /* The first tiles of Top Picks are always new: the best-matching titles released (or with a
+     new season) in the last 6 months move into the first 6 spots (config.json row_tilt
+     picks_new_first, picks_new_months). Everything else keeps its order after them. Too few new
+     titles (say, one service picked): the rest are filled as usual. */
+  function newFirst(list) {
+    const tilt = feed.row_tilt || {};
+    const lead = tilt.picks_new_first ?? 6, months = tilt.picks_new_months ?? 6;
+    const from = new Date(Date.now() - months * 30.44 * 86400000).toISOString().slice(0, 10);
+    const now = new Date().toISOString().slice(0, 10);
+    const isNew = (t) => { const d = t.type === "tv" ? t.latest_air || t.release : t.release; return d && d >= from && d <= now; };
+    const front = list.filter((t) => isNew(t) && !genreSunk(t)).slice(0, lead);
+    const picked = new Set(front.map((t) => t.id));
+    return [...front, ...list.filter((t) => !picked.has(t.id))];
   }
 
   /* "Because you liked…" row, right below Your library. Similar titles (TMDB's recommendations

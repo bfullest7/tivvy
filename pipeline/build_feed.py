@@ -353,6 +353,25 @@ def check_services(titles: dict, state: dict, cfg: dict, day: str) -> list[str]:
     return alerts
 
 
+# TMDB release types: 1 premiere (festivals), 2 limited theatrical, 3 theatrical, 4 digital,
+# 5 physical, 6 TV. Festival premieres are left out (a film shown at Sundance a year before
+# anyone could watch it isn't that old to viewers).
+PUBLIC_RELEASE_TYPES = {2, 3, 4, 5, 6}
+
+
+def first_release(primary: str | None, release_dates: dict | None) -> str | None:
+    """A movie's first public release anywhere. TMDB's main release date can be a later
+    re-release (Hamilton: streaming in 2020, back in cinemas in 2025, listed as 2025), which made
+    old movies look new; the earliest public release date fixes that."""
+    dates = [r.get("release_date", "")[:10]
+             for c in (release_dates or {}).get("results", []) for r in c.get("release_dates", [])
+             if r.get("type") in PUBLIC_RELEASE_TYPES and r.get("release_date")]
+    dates = [x for x in dates if len(x) == 10 and x <= today().isoformat()]
+    if primary:
+        dates.append(primary)
+    return min(dates) if dates else primary
+
+
 def clamp(x, lo=0.0, hi=100.0):
     return max(lo, min(hi, x))
 
@@ -424,8 +443,8 @@ class Tmdb:
 
     def details(self, kind: str, tmdb_id: int, provider_to_service: dict[int, str]) -> dict | None:
         try:
-            d = self.get(f"/{kind}/{tmdb_id}", append_to_response="external_ids,watch/providers,recommendations,similar,keywords,videos,"
-                         + ("credits" if kind == "movie" else "aggregate_credits"),
+            d = self.get(f"/{kind}/{tmdb_id}", append_to_response="external_ids,watch/providers,recommendations,similar,keywords,videos"
+                         + (",credits,release_dates" if kind == "movie" else ",aggregate_credits"),
                          include_video_language="en,null")
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -445,7 +464,7 @@ class Tmdb:
         if sport_kw and "Sports" not in genres:
             genres.append("Sports")
         if kind == "movie":
-            title, date = d.get("title"), d.get("release_date")
+            title, date = d.get("title"), first_release(d.get("release_date"), d.get("release_dates"))
             latest = date
             runtime = d.get("runtime") or None  # minutes; shown as "2h 15m"
             season_count = None
