@@ -79,6 +79,21 @@
     "hbomax": 738,
     "paramount": 699
    }
+  },
+  {
+   "date": "2026-11-24",
+   "counts": {
+    "prime": 1166,
+    "appletv": 291,
+    "hulu": 804,
+    "disney": 723,
+    "netflix": 1201,
+    "starz": 442,
+    "tubi": 1119,
+    "peacock": 626,
+    "hbomax": 738,
+    "paramount": 701
+   }
   }
  ]
 }
