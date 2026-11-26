@@ -6,21 +6,6 @@
  "overlap_since": {},
  "history": [
   {
-   "date": "2026-11-19",
-   "counts": {
-    "prime": 1137,
-    "appletv": 290,
-    "disney": 715,
-    "netflix": 1178,
-    "starz": 441,
-    "tubi": 1087,
-    "peacock": 620,
-    "hbomax": 726,
-    "paramount": 695,
-    "hulu": 797
-   }
-  },
-  {
    "date": "2026-11-20",
    "counts": {
     "prime": 1142,
@@ -108,6 +93,21 @@
     "peacock": 638,
     "hbomax": 746,
     "paramount": 703
+   }
+  },
+  {
+   "date": "2026-11-26",
+   "counts": {
+    "prime": 1187,
+    "appletv": 292,
+    "hulu": 818,
+    "disney": 729,
+    "netflix": 1212,
+    "starz": 442,
+    "tubi": 1130,
+    "peacock": 638,
+    "hbomax": 747,
+    "paramount": 704
    }
   }
  ]
